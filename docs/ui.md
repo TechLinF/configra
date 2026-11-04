@@ -178,6 +178,9 @@ records; bounded response size is not a constant-time query guarantee.
 - Default lists exclude archived/revoked rows. Use `include_archived=true` or
   `include_revoked=true`, or `status=active|all|archived` (`revoked` for credentials).
   Do not combine `status` with an `include_*` flag.
+- The Management UI lists Environments, Configs, Vault Items and API Tokens with
+  a Status filter that defaults to **Active**; choose Archived/Revoked or All to
+  see inactive rows. A non-default status is kept in the page URL.
 - Config supports exact `environment` and `unbound=true` (no active environment).
   Vault supports exact `namespace` and `environment` filters. Environment lists
   support `config`, paired `namespace` + `item`, and Admin-only `token`.

@@ -13,6 +13,15 @@ text is retained. Vite's full license appendix and Rolldown's Rollup/esbuild
 attributions are retained as supersets for their emitted helpers; this does not
 classify the entire native build-tool dependency tree as browser code.
 
+On 2026-11-04 Vite moved from 8.2.2 to 8.3.5 (and Rolldown from 1.2.6 to
+1.2.16) to clear high-severity Vite advisories. Rolldown's `LICENSE` and
+`THIRD-PARTY-LICENSE` are byte-identical to the reviewed copies. Vite's core
+MIT text is unchanged; its bundled-dependency appendix drops
+`@vercel/detect-agent` (Apache-2.0), `cross-spawn`, `isexe`/`which`,
+`path-key`/`shebang-regex` and `shebang-command`, adds `std-env` and `tinyexec`
+(both MIT), and adds co-author names to two existing entries. No new license
+type was introduced; the complete new appendix is retained as before.
+
 When upgrading a package or changing asset-generation paths, inspect the actual
 build inputs and upstream licenses before updating this review. Unknown modules,
 versions, generated helpers, or changed legal files must not be silently accepted.

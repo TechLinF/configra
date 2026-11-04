@@ -192,7 +192,9 @@ test('administrator patches a Token Environment grant set and permanently revoke
   await page.getByRole('button', { name: 'Revoke Datacenter A' }).click();
   await page.getByRole('button', { name: 'Confirm revoke Datacenter A' }).click();
   expect(revocation).toMatch(/^[0-9a-f-]{36}$/);
-  await expect(page.getByText('Revoked', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Revoke Datacenter A' })).toHaveCount(0);
+  await page.getByLabel('Status').selectOption('revoked');
+  await expect(page.locator('tbody').getByText('Revoked', { exact: true })).toBeVisible();
 });
 
 test('grant editing retains unseen permissions and pending changes across searches and pages', async ({ page }) => {

@@ -52,7 +52,7 @@ consistent Config+File batch, or the existing individual read endpoints.
 
 ## Try the workspace
 
-With Docker Compose, Go 1.26.9, Node.js 24, npm, Make and OpenSSL installed:
+With Docker Compose, Go 1.26.10, Node.js 24, npm, Make and OpenSSL installed:
 
 ```sh
 git clone --branch v1.2.1 https://github.com/viber-ops/configra.git
@@ -108,7 +108,7 @@ For v1.2.1, see the [patch upgrade and fixes](docs/releases/v1.2.1.md) (no schem
 ## Develop and verify
 
 Clone the SDK next to this repository for integration tests. The release builder
-uses Go 1.26.9 and embeds the production web build.
+uses Go 1.26.10 and embeds the production web build.
 
 ```sh
 go test -race ./...

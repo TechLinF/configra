@@ -14,11 +14,11 @@
     "properties": [
       {
         "name": "configra:bundle-files",
-        "value": "[{\"path\":\"assets/editors-DHAQ3fGA.js\",\"sha256\":\"9ce8adf3e1ccc9ba06cc642c0a5b01677baef27e6da1e7576cbbca1a6581787d\"},{\"path\":\"assets/index-5BGWGnml.js\",\"sha256\":\"8c30c84f3e7631a0520b990aff60abee158610be722a22ce2b753c0bca7b4df8\"},{\"path\":\"assets/index-BUxNUFrc.css\",\"sha256\":\"1862170e0164560c490f2b5a5adb674fa03521e932fc0c7f11dbdd39390c4847\"}]"
+        "value": "[{\"path\":\"assets/editors-CwWOn_zq.js\",\"sha256\":\"65382c6891ad2b853b5bcbaf1f62d66a1626047ee228afb30d3468b9e6d93512\"},{\"path\":\"assets/index-BtnJgmg8.js\",\"sha256\":\"7073c7cbfbe1312d85127b47ebfe06062a33c23c418076f80872c31714e06f7e\"},{\"path\":\"assets/index-vZ07mFNQ.css\",\"sha256\":\"35880822752676beee73f714585e7fefc0d7c6a80da26f87eb997cc0deabc9dc\"}]"
       },
       {
         "name": "configra:notices-sha256",
-        "value": "9dc7af0b03463eb5f6d7a8917ae4a2c5667ea30c6bf835b592dd94f2934c1e04"
+        "value": "adc203986fd6d8878df8052a2a6e2fc4fb017dc6fe18f2d2402624822223086a"
       }
     ]
   },
@@ -705,10 +705,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/rolldown@1.2.6",
+      "bom-ref": "pkg:npm/rolldown@1.2.16",
       "name": "rolldown",
-      "version": "1.2.6",
-      "purl": "pkg:npm/rolldown@1.2.6",
+      "version": "1.2.16",
+      "purl": "pkg:npm/rolldown@1.2.16",
       "licenses": [
         {
           "license": {
@@ -719,13 +719,13 @@
       "externalReferences": [
         {
           "type": "distribution",
-          "url": "https://registry.npmjs.org/rolldown/-/rolldown-1.2.6.tgz"
+          "url": "https://registry.npmjs.org/rolldown/-/rolldown-1.2.16.tgz"
         }
       ],
       "properties": [
         {
           "name": "configra:npm:integrity",
-          "value": "sha512-vMM4q3aixf46GiF1Kok8jDPFsEpXgFWGjUHXNkNHNm+Y2adXAG2dbX91jkti3i0ZRsOlcmbuzAz1poObSHCmUA=="
+          "value": "sha512-bWvlMpFKiTfDKfnK7FC2MPgPeWCf/Kpwsq49ApdW+FQaBZb6O6dZ4MAPbPUjp7hYQrw/RobqCzn64BRrQecGHw=="
         },
         {
           "name": "configra:bundled-modules",
@@ -807,10 +807,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/vite@8.2.2",
+      "bom-ref": "pkg:npm/vite@8.3.5",
       "name": "vite",
-      "version": "8.2.2",
-      "purl": "pkg:npm/vite@8.2.2",
+      "version": "8.3.5",
+      "purl": "pkg:npm/vite@8.3.5",
       "licenses": [
         {
           "license": {
@@ -821,13 +821,13 @@
       "externalReferences": [
         {
           "type": "distribution",
-          "url": "https://registry.npmjs.org/vite/-/vite-8.2.2.tgz"
+          "url": "https://registry.npmjs.org/vite/-/vite-8.3.5.tgz"
         }
       ],
       "properties": [
         {
           "name": "configra:npm:integrity",
-          "value": "sha512-cFKLV/PRgAUlIRm5WjMjJ86jrftzpqcgH+Us+DS8mI3CDNiH30Whrz8uHL3+MOLPAgqbMBAqWdAHAphOAM+z/Q=="
+          "value": "sha512-z1YpjieJ9g0ebTmQpLBv/oq9E3F9EIlOe+7LahW8SrE3LTiG3udBRUXQOlYXP9b+IC2q2phHeVxj9xGlw34OEQ=="
         },
         {
           "name": "configra:bundled-modules",
@@ -835,7 +835,7 @@
         },
         {
           "name": "configra:license-files",
-          "value": "[{\"path\":\"LICENSE.md\",\"sha256\":\"387dd7baa307083401a27c58c362c30832f5ba1dba84f10cc22c33401523f45c\"}]"
+          "value": "[{\"path\":\"LICENSE.md\",\"sha256\":\"a22152baa1aef74402443008e767e7c689a524c0909d19b0431d97f5ab066a13\"}]"
         }
       ]
     },
@@ -898,10 +898,10 @@
         "pkg:npm/crelt@1.0.7",
         "pkg:npm/react-dom@19.2.8",
         "pkg:npm/react@19.2.8",
-        "pkg:npm/rolldown@1.2.6",
+        "pkg:npm/rolldown@1.2.16",
         "pkg:npm/scheduler@0.27.0",
         "pkg:npm/style-mod@4.1.3",
-        "pkg:npm/vite@8.2.2",
+        "pkg:npm/vite@8.3.5",
         "pkg:npm/w3c-keyname@2.2.8"
       ]
     }

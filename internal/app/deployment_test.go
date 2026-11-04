@@ -16,7 +16,7 @@ func TestProductionDockerfileIsStaticNonRootAndToolchainPinned(t *testing.T) {
 	}
 	dockerfile := string(encoded)
 	for _, required := range []string{
-		"golang:1.26.9-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c", "CGO_ENABLED=0", "FROM scratch", "ca-certificates.crt",
+		"golang:1.26.10-bookworm@sha256:23ce71337b726608afb1bc00986e630a05034a87a87ea1fc2cd1ae5cf33387eb", "CGO_ENABLED=0", "FROM scratch", "ca-certificates.crt",
 		"USER 65532:65532", `ENTRYPOINT ["/configra"]`,
 	} {
 		if !strings.Contains(dockerfile, required) {

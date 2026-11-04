@@ -248,6 +248,8 @@ const messages = {
     textType: 'Text',
     tokenOnce: 'This token will not be shown again.',
     noResources: 'No managed resources yet.',
+    noMatchingResults: 'Nothing matches the current search and status filter.',
+    resourceKeyInUse: 'This resource key is already in use. Choose another key, or open the existing resource.',
     noFileSelected: 'No file selected',
     overview: 'Overview',
     overviewBody: 'Service status, recent changes, and configuration gaps.',
@@ -435,7 +437,7 @@ const messages = {
     noMatchingAudits: '没有符合当前搜索条件的审计记录。',
     auditPagination: '审计日志分页',
     pageNumber: '第 {page} 页',
-    archive: 'Archive',
+    archive: '归档',
     cancel: '取消',
     clone: '克隆',
     cloneComplete: '克隆已创建。',
@@ -472,7 +474,7 @@ const messages = {
     diffAdded: '新增',
     diffRemoved: '删除',
     configured: '已配置',
-    confirmArchive: '确认 Archive',
+    confirmArchive: '确认归档',
     confirmRestore: '确认恢复 v{revision}',
     configs: '配置',
     configBody: '同一个 Config 身份，在每个所在 Environment 中拥有独立的 Revision 历史。',
@@ -623,6 +625,8 @@ const messages = {
     textType: '文本',
     tokenOnce: '此 Token 不会再次显示。',
     noResources: '还没有托管资源。',
+    noMatchingResults: '没有符合当前搜索和状态筛选的结果。',
+    resourceKeyInUse: '此资源键已被使用。请换一个键名，或打开已有资源。',
     noFileSelected: '尚未选择文件',
     overview: '概览',
     overviewBody: '查看服务状态、最近变更和配置缺口。',
@@ -664,7 +668,7 @@ const messages = {
     unresolved_vault_reference: '此 Environment 中有 Vault 引用无法解析。',
     crypto_integrity_failure: 'Vault 完整性校验失败，请联系管理员。',
     not_found: '请求的资源已不存在。',
-    statusActive: '启用',
+    statusActive: '使用中',
     statusArchived: '已归档',
     secretType: 'Secret',
     sourceConfig: '源 Config',
@@ -940,7 +944,7 @@ function replaceHashQuery(changes) {
   const [path, search = ''] = window.location.hash.slice(2).split('?');
   const query = new URLSearchParams(search);
   for (const [key, value] of Object.entries(changes)) {
-    if (value === '' || value == null || value === 1 || value === 'all') query.delete(key);
+    if (value === '' || value == null || value === 1 || (key === 'status' && value === 'active')) query.delete(key);
     else query.set(key, String(value));
   }
   const suffix = query.size ? `?${query}` : '';
@@ -1250,13 +1254,14 @@ function Environments({ principal, t }) {
   const [editing, setEditing] = useState('');
   const [confirming, setConfirming] = useState('');
   const [refresh, setRefresh] = useState(0);
-  const [mutationError, setMutationError] = useState('');
+  const [mutationError, setMutationError] = useState(null);
   const [search, setSearch] = useState('');
-  const state = useInventory(`/v1/environments?include_archived=true&q=${encodeURIComponent(search)}`, refresh);
+  const [statusFilter, setStatusFilter] = useState('active');
+  const state = useInventory(`/v1/environments?${new URLSearchParams({ status: statusFilter, q: search })}`, refresh);
 
   const create = async event => {
     event.preventDefault();
-    setMutationError('');
+    setMutationError(null);
     const data = new FormData(event.currentTarget);
     try {
       await request('/v1/environments', {
@@ -1266,8 +1271,8 @@ function Environments({ principal, t }) {
       });
       setCreating(false);
       setRefresh(value => value + 1);
-    } catch {
-      setMutationError(t.operationFailed);
+    } catch (error) {
+      setMutationError(createError(error, t, t.operationFailed));
     }
   };
   const rename = async event => {
@@ -1281,8 +1286,8 @@ function Environments({ principal, t }) {
       });
       setEditing('');
       setRefresh(value => value + 1);
-    } catch {
-      setMutationError(t.operationFailed);
+    } catch (error) {
+      setMutationError(managementError(error, t, t.operationFailed));
     }
   };
   const changeLifecycle = async (environment, action) => {
@@ -1290,24 +1295,27 @@ function Environments({ principal, t }) {
       await request(`/v1/environments/${encodeURIComponent(environment.key)}/${action}`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() } });
       setConfirming('');
       setRefresh(value => value + 1);
-    } catch {
-      setMutationError(t.operationFailed);
+    } catch (error) {
+      setMutationError(managementError(error, t, t.operationFailed));
     }
   };
 
   return (
     <ResourcePage eyebrow="ENV / peer contexts" title={t.environments} body={t.environmentBody}
       action={principal.role === 'admin' && <button className="primary-action compact-action" type="button" onClick={() => setCreating(value => !value)}>{t.newEnvironment}</button>}>
-      <label>{t.search}<input type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
+      <div className="index-toolbar">
+        <label><span>{t.search}</span><input type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
+        <StatusFilter value={statusFilter} onChange={setStatusFilter} t={t} />
+      </div>
       {creating && (
         <form className="create-panel" onSubmit={create}>
           <label>{t.resourceKey}<input name="key" required maxLength="63" pattern="[a-z][a-z0-9_-]{0,62}" autoComplete="off" /><small>{t.resourceKeyHint}</small></label>
           <label>{t.displayName}<input name="display_name" required maxLength="255" autoComplete="off" /></label>
           <button className="primary-action compact-action" type="submit">{t.createEnvironment}</button>
-          {mutationError && <span className="inline-error" role="alert">{mutationError}</span>}
+          <ActionError error={mutationError} t={t} />
         </form>
       )}
-      {(!creating || state.items.length > 0) && <CollectionState state={state} t={t}>
+      {(!creating || state.items.length > 0) && <CollectionState state={state} t={t} empty={search || statusFilter !== 'active' ? t.noMatchingResults : undefined}>
         <div className="table-frame environment-index-table"><table>
           <thead><tr><th>{t.environment}</th><th>{t.updated}</th><th>{t.status}</th>{principal.role === 'admin' && <th />}</tr></thead>
           <tbody>{state.items.map(environment => <tr key={environment.key}>
@@ -1328,7 +1336,7 @@ function Environments({ principal, t }) {
         </table></div>
       </CollectionState>}
       <InventoryPagination collection={state} t={t} />
-      {!creating && mutationError && <p className="inline-error" role="alert">{mutationError}</p>}
+      {!creating && mutationError && <p className="inline-error"><ActionError error={mutationError} t={t} /></p>}
     </ResourcePage>
   );
 }
@@ -1363,11 +1371,11 @@ function EnvironmentDetail({ environmentKey, t }) {
 function Configs({ principal, filters = new URLSearchParams(), t }) {
   const [creating, setCreating] = useState(false);
   const [confirming, setConfirming] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   const [warnings, setWarnings] = useState([]);
   const [refresh, setRefresh] = useState(0);
   const [query, setQuery] = useState(() => filters.get('q') || '');
-  const [statusFilter, setStatusFilter] = useState(() => filters.get('status') || 'all');
+  const [statusFilter, setStatusFilter] = useState(() => filters.get('status') || 'active');
   const [environmentFilter, setEnvironmentFilter] = useState(() => filters.get('environment') || '');
   const [initialPage, setInitialPage] = useState(() => Math.max(1, Number.parseInt(filters.get('page'), 10) || 1));
   const [createFormat, setCreateFormat] = useState('yaml');
@@ -1377,15 +1385,15 @@ function Configs({ principal, filters = new URLSearchParams(), t }) {
   const filterKey = filters.toString();
   useEffect(() => {
     setQuery(filters.get('q') || '');
-    setStatusFilter(filters.get('status') || 'all');
+    setStatusFilter(filters.get('status') || 'active');
     setEnvironmentFilter(filters.get('environment') || '');
     setInitialPage(Math.max(1, Number.parseInt(filters.get('page'), 10) || 1));
   }, [filterKey]);
   const create = async event => {
     event.preventDefault();
-    setError('');
+    setError(null);
     const data = new FormData(event.currentTarget);
-    if (!createContent.trim()) return setError(t.saveFailed);
+    if (!createContent.trim()) return setError({ message: t.saveFailed });
     try {
       const result = await request(`/v1/environments/${encodeURIComponent(data.get('environment'))}/configs/${encodeURIComponent(data.get('key'))}`, {
         method: 'PUT',
@@ -1396,8 +1404,8 @@ function Configs({ principal, filters = new URLSearchParams(), t }) {
       setCreating(false);
       setCreateContent('');
       setRefresh(value => value + 1);
-    } catch {
-      setError(t.saveFailed);
+    } catch (error) {
+      setError(createError(error, t, t.saveFailed));
     }
   };
   const changeLifecycle = async (config, action) => {
@@ -1405,8 +1413,8 @@ function Configs({ principal, filters = new URLSearchParams(), t }) {
       await request(`/v1/configs/${encodeURIComponent(config.key)}/${action}`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() } });
       setConfirming('');
       setRefresh(value => value + 1);
-    } catch {
-      setError(t.operationFailed);
+    } catch (error) {
+      setError(managementError(error, t, t.operationFailed));
     }
   };
   return (
@@ -1418,17 +1426,17 @@ function Configs({ principal, filters = new URLSearchParams(), t }) {
         <label>{t.displayName}<input name="display_name" required maxLength="255" autoComplete="off" /></label>
         <label>{t.format}<select name="format" value={createFormat} onChange={event => setCreateFormat(event.target.value)}><option value="yaml">YAML</option><option value="json">JSON</option></select></label>
         <div className="form-source"><span>{t.configurationSource}</span><ConfigCodeEditor label={t.configurationSource} value={createContent} format={createFormat} readOnly={false} onChange={setCreateContent} /></div>
-        <div className="form-actions"><span className="inline-error" role="alert">{error}</span><button className="primary-action compact-action" type="submit" disabled={!createContent.trim()}>{t.createConfig}</button></div>
+        <div className="form-actions"><ActionError error={error} t={t} /><button className="primary-action compact-action" type="submit" disabled={!createContent.trim()}>{t.createConfig}</button></div>
       </form>}
       <div className="config-index">
           {filters.get('unbound') === 'true' && <p>{t.noActiveConfigContext} · <a href="#/configs">{t.configs}</a></p>}
           <div className="config-index-toolbar">
             <label><span>{t.searchConfigs}</span><input type="search" value={query} placeholder={t.searchConfigsPlaceholder} onChange={event => { setQuery(event.target.value); setInitialPage(1); replaceHashQuery({ q: event.target.value, page: 1 }); }} /></label>
             <EnvironmentSelect label={t.environmentFilter} emptyLabel={t.allEnvironments} value={environmentFilter} includeArchived onChange={value => { setEnvironmentFilter(value); setInitialPage(1); replaceHashQuery({ environment: value, page: 1 }); }} t={t} />
-            <label><span>{t.status}</span><select value={statusFilter} onChange={event => { setStatusFilter(event.target.value); setInitialPage(1); replaceHashQuery({ status: event.target.value, page: 1 }); }}><option value="all">{t.allStatuses}</option><option value="active">{t.statusActive}</option><option value="archived">{t.statusArchived}</option></select></label>
+            <StatusFilter value={statusFilter} onChange={value => { setStatusFilter(value); setInitialPage(1); replaceHashQuery({ status: value, page: 1 }); }} t={t} />
             <output>{state.status === 'ready' ? state.total : '…'} {t.configs}</output>
           </div>
-          <CollectionState state={state} t={t}><div className="table-frame config-index-frame">
+          <CollectionState state={state} t={t} empty={query || environmentFilter || statusFilter !== 'active' ? t.noMatchingConfigs : undefined}><div className="table-frame config-index-frame">
             <table className="config-index-table">
               <thead><tr><th>{t.configIdentity}</th><th>{t.environmentRevisions}</th><th>{t.updated}</th><th>{t.status}</th>{principal.role === 'admin' && <th />}</tr></thead>
               <tbody>{state.items.map(config => (
@@ -1455,7 +1463,7 @@ function Configs({ principal, filters = new URLSearchParams(), t }) {
           <InventoryPagination collection={state} t={t} onPageChange={page => replaceHashQuery({ page })} />
         </div>
       {warnings.length > 0 && <div className="config-warning-list" role="status"><ConfigWarningLines warnings={warnings} t={t} /></div>}
-      {!creating && error && <p className="inline-error" role="alert">{error}</p>}
+      {!creating && error && <p className="inline-error"><ActionError error={error} t={t} /></p>}
     </ResourcePage>
   );
 }
@@ -1702,15 +1710,17 @@ function VaultItems({ principal, filters = new URLSearchParams(), t }) {
   const [namespaceFilter, setNamespaceFilter] = useState(() => filters.get('namespace') || '');
   const [environmentFilter, setEnvironmentFilter] = useState(() => filters.get('environment') || '');
   const [search, setSearch] = useState(() => filters.get('q') || '');
+  const [statusFilter, setStatusFilter] = useState(() => filters.get('status') || 'active');
   const [confirming, setConfirming] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   const [refresh, setRefresh] = useState(0);
-  const state = useInventory(`/v1/vault-items?${new URLSearchParams({ include_archived: 'true', namespace: namespaceFilter, environment: environmentFilter, q: search })}`, refresh);
+  const state = useInventory(`/v1/vault-items?${new URLSearchParams({ status: statusFilter, namespace: namespaceFilter, environment: environmentFilter, q: search })}`, refresh);
   const filterKey = filters.toString();
   useEffect(() => {
     setNamespaceFilter(filters.get('namespace') || '');
     setEnvironmentFilter(filters.get('environment') || '');
     setSearch(filters.get('q') || '');
+    setStatusFilter(filters.get('status') || 'active');
   }, [filterKey]);
   const toggleCreate = () => {
     if (!creating) {
@@ -1719,14 +1729,14 @@ function VaultItems({ principal, filters = new URLSearchParams(), t }) {
       setNewItemKey('');
     }
     setCreating(value => !value);
-    setError('');
+    setError(null);
   };
   const create = async event => {
     event.preventDefault();
-    setError('');
+    setError(null);
     const data = new FormData(event.currentTarget);
     const validationError = validateVaultDraft(draft, t);
-    if (validationError) return setError(validationError);
+    if (validationError) return setError({ message: validationError });
     const snapshot = serializeVaultDraft(draft);
     try {
       await request(`/v1/vault-items/${encodeURIComponent(newNamespaceKey)}/${encodeURIComponent(newItemKey)}`, {
@@ -1737,8 +1747,8 @@ function VaultItems({ principal, filters = new URLSearchParams(), t }) {
       setCreating(false);
       setDraft(null);
       setRefresh(value => value + 1);
-    } catch {
-      setError(t.operationFailed);
+    } catch (error) {
+      setError(createError(error, t, t.operationFailed));
     }
   };
   const changeLifecycle = async (item, action) => {
@@ -1746,8 +1756,8 @@ function VaultItems({ principal, filters = new URLSearchParams(), t }) {
       await request(`/v1/vault-items/${encodeURIComponent(item.namespace_key)}/${encodeURIComponent(item.key)}/${action}`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() } });
       setConfirming('');
       setRefresh(value => value + 1);
-    } catch {
-      setError(t.operationFailed);
+    } catch (error) {
+      setError(managementError(error, t, t.operationFailed));
     }
   };
   return (
@@ -1756,14 +1766,15 @@ function VaultItems({ principal, filters = new URLSearchParams(), t }) {
       {creating && draft && <form className="vault-structured-form" onSubmit={create}>
         <section className="vault-item-basics"><div className="vault-editor-heading"><h2>{t.itemDetails}</h2></div><div className="vault-item-identity"><label>{t.namespace}<input required maxLength="63" pattern="[a-z][a-z0-9_-]{0,62}" autoComplete="off" value={newNamespaceKey} onChange={event => setNewNamespaceKey(event.target.value)} /><small>{t.namespaceHint}</small></label><label>{t.resourceKey}<input required maxLength="63" pattern="[a-z][a-z0-9_-]{0,62}" autoComplete="off" value={newItemKey} onChange={event => setNewItemKey(event.target.value)} /><small>{t.resourceKeyHint}</small></label><label>{t.displayName}<input name="display_name" required maxLength="255" autoComplete="off" /></label></div></section>
         <VaultSnapshotEditor draft={draft} onChange={setDraft} namespaceKey={newNamespaceKey} itemKey={newItemKey} t={t} />
-        <div className="vault-editor-footer"><span className="inline-error" role="alert">{error}</span><div className="row-actions"><button type="button" onClick={toggleCreate}>{t.cancel}</button><button className="primary-action compact-action" type="submit">{t.createVaultItem}</button></div></div>
+        <div className="vault-editor-footer"><ActionError error={error} t={t} /><div className="row-actions"><button type="button" onClick={toggleCreate}>{t.cancel}</button><button className="primary-action compact-action" type="submit">{t.createVaultItem}</button></div></div>
       </form>}
       <div className="vault-index-tools">
         <label><span>{t.searchVault}</span><input type="search" aria-label={t.searchVault} placeholder={t.searchVaultPlaceholder} value={search} onChange={event => { setSearch(event.target.value); replaceHashQuery({ q: event.target.value }); }} /></label>
         <EnvironmentSelect label={t.environmentFilter} emptyLabel={t.allEnvironments} value={environmentFilter} includeArchived onChange={value => { setEnvironmentFilter(value); replaceHashQuery({ environment: value }); }} t={t} />
         <label><span>{t.namespace}</span><input type="search" aria-label={t.namespaceFilter} placeholder={t.allNamespaces} value={namespaceFilter} onChange={event => { setNamespaceFilter(event.target.value); replaceHashQuery({ namespace: event.target.value }); }} /></label>
+        <StatusFilter value={statusFilter} onChange={value => { setStatusFilter(value); replaceHashQuery({ status: value }); }} t={t} />
       </div>
-      {(!creating || state.items.length > 0) && <CollectionState state={state} t={t}>
+      {(!creating || state.items.length > 0) && <CollectionState state={state} t={t} empty={search || namespaceFilter || environmentFilter || statusFilter !== 'active' ? t.noMatchingVaultItems : undefined}>
         <div className="table-frame vault-index-table"><table><thead><tr><th>{t.namespace}</th><th>{t.resource}</th><th>{t.displayName}</th><th>{t.boundEnvironments}</th><th>{t.revision}</th><th>{t.updated}</th><th>{t.status}</th>{principal.role === 'admin' && <th />}</tr></thead>
           <tbody>{state.items.map(item => <tr key={`${item.namespace_key}.${item.key}`}>
             <td><code>{item.namespace_key}</code></td><td><a href={`#/vault/${item.namespace_key}/${item.key}`} aria-label={`${item.namespace_key}.${item.key} · ${item.display_name} · v${item.revision}`}><code>{item.key}</code></a></td>
@@ -1778,7 +1789,7 @@ function VaultItems({ principal, filters = new URLSearchParams(), t }) {
         </table></div>
       </CollectionState>}
       <InventoryPagination collection={state} t={t} />
-      {!creating && error && <p className="inline-error" role="alert">{error}</p>}
+      {!creating && error && <p className="inline-error"><ActionError error={error} t={t} /></p>}
     </ResourcePage>
   );
 }
@@ -2065,11 +2076,12 @@ function TokensPanel({ t, principal }) {
   const inputFeedback = field => ({ 'aria-invalid': error?.field === field || undefined, 'aria-describedby': error?.field === field ? 'token-create-error' : undefined });
   const [refresh, setRefresh] = useState(0);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('active');
   const [environmentKeys, setEnvironmentKeys] = useState([]);
   const [grants, setGrants] = useState({});
   const [saving, setSaving] = useState(false);
   const confirmDiscard = useUnsavedChanges(Object.keys(grants).length > 0, t.unsavedChanges);
-  const state = useInventory(`/v1/api-tokens?include_revoked=true&q=${encodeURIComponent(search)}`, refresh);
+  const state = useInventory(`/v1/api-tokens?${new URLSearchParams({ status: statusFilter, q: search })}`, refresh);
   const create = async event => {
     event.preventDefault();
     if (creatingToken) return;
@@ -2144,7 +2156,10 @@ function TokensPanel({ t, principal }) {
   return (
     <section className="admin-panel tokens-panel">
       <div className="panel-actions"><span>{t.tokenEnvironmentGrant}</span><button className="primary-action compact-action" type="button" disabled={creatingToken} onClick={() => { resetMutation(); setCreating(value => !value); setEnvironmentKeys([]); setError(null); setCreated(null); }}>{t.newAPIToken}</button></div>
-      <label className="credential-search">{t.search}<input type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
+      <div className="index-toolbar">
+        <label><span>{t.search}</span><input type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
+        <StatusFilter value={statusFilter} onChange={setStatusFilter} inactive="revoked" t={t} />
+      </div>
       {created && <div className="one-time-secret" role="alert"><strong>{created.token ? t.tokenOnce : (t.locale.startsWith('zh') ? '该操作已完成，令牌不会再次返回。如未保存，请按下方 Token ID 找到并吊销该令牌后重新签发。' : 'This operation already completed. The Token cannot be returned again. If it was not saved, find and revoke the Token ID below, then issue a replacement.')}</strong><CopyValue value={created.token || created.public_id} label={created.token ? 'API Token' : 'Token ID'} t={t} /></div>}
       {creating && (
         <form className="token-form" noValidate onSubmit={create} onInput={() => setError(null)}>
@@ -2166,7 +2181,7 @@ function TokensPanel({ t, principal }) {
         <button type="button" disabled={saving} onClick={() => { if (confirmDiscard()) { setEditing(''); setGrants({}); } }}>{t.cancel}</button>
       </form>}
       {!creating && error && <ActionError error={error} t={t} />}
-      <CollectionState state={state} t={t}>
+      <CollectionState state={state} t={t} empty={search || statusFilter !== 'active' ? t.noMatchingResults : undefined}>
         <div className="table-frame"><table><thead><tr><th>{t.tokenName}</th><th>{t.prefix}</th><th>{t.environments}</th><th>mTLS</th><th>{t.expiresAt}</th><th>{t.status}</th><th /></tr></thead>
           <tbody>{state.items.map(token => <tr key={token.public_id}><td><strong title={token.display_name}>{token.display_name}</strong><CopyValue value={token.public_id} label="Token ID" t={t} /><small>{token.kind || 'read-only'}</small>{(token.kind === 'write-scoped' || token.parent_public_id) && <details><summary>{t.allowedEnvironments}</summary><p>{t.configAllowlist}: {token.config_keys == null ? '*' : token.config_keys.join(', ') || '∅'}</p><p>{t.namespaceAllowlist}: {token.namespace_keys == null ? '*' : token.namespace_keys.join(', ') || '∅'}</p></details>}</td><td><code title={token.display_prefix}>{token.display_prefix}</code></td><td><div className="environment-links">{token.environment_keys.map(environment => <code key={environment}>{environment}</code>)}{token.environment_count > token.environment_keys.length && <span>+{token.environment_count - token.environment_keys.length}</span>}</div></td><td>{token.allow_without_mtls ? t.tokenOnlyAllowed : t.mtlsRequired}</td><td><Expiration value={token.expires_at} now={now} revoked={token.revoked} t={t} /></td><td><span className={token.revoked || Date.parse(token.expires_at) <= now ? 'status archived' : 'status active'}>{token.revoked ? t.revoked : Date.parse(token.expires_at) <= now ? (t.locale.startsWith('zh') ? '已过期' : 'Expired') : t.statusActive}</span></td><td>{!token.revoked && <div className="row-actions">{token.kind !== 'write-scoped' && !token.parent_public_id && <button type="button" disabled={saving} aria-label={`${t.editEnvironments} ${token.display_name}`} onClick={() => { if (confirmDiscard()) { setEditing(token); setGrants({}); } }}>{t.editEnvironments}</button>}{confirming === token.public_id ? <button className="danger-link" type="button" aria-label={`${t.confirmRevoke} ${token.display_name}`} onClick={() => revoke(token.public_id)}>{t.confirmRevoke}</button> : <button className="danger-link" type="button" aria-label={`${t.revoke} ${token.display_name}`} onClick={() => setConfirming(token.public_id)}>{t.revoke}</button>}</div>}</td></tr>)}</tbody>
         </table></div>
@@ -2811,11 +2826,23 @@ function ResourcePage({ eyebrow, title, body, action, children, className = '' }
   return <div className={`page ${className}`.trim()}><div className="resource-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{body}</p></div>{action}</div>{children}</div>;
 }
 
-function CollectionState({ state, t, children }) {
+function CollectionState({ state, t, empty, children }) {
   if (state.status === 'loading') return <div className="collection-state"><span className="loading-line" /></div>;
   if (state.status === 'failed') return <div className="collection-state"><p>{t.loadFailed}</p></div>;
-  if (state.items.length === 0) return <div className="collection-state"><p>{t.noResources}</p></div>;
+  if (state.items.length === 0) return <div className="collection-state"><p>{empty || t.noResources}</p></div>;
   return children;
+}
+
+function StatusFilter({ value, onChange, inactive = 'archived', t }) {
+  return <label><span>{t.status}</span><select value={value} onChange={event => onChange(event.target.value)}>
+    <option value="active">{t.statusActive}</option>
+    <option value={inactive}>{inactive === 'revoked' ? t.revoked : t.statusArchived}</option>
+    <option value="all">{t.allStatuses}</option>
+  </select></label>;
+}
+
+function createError(error, t, fallback) {
+  return error?.status === 409 ? { message: t.resourceKeyInUse, requestID: error.requestID || '' } : managementError(error, t, fallback);
 }
 
 function formatDate(value, locale) {
