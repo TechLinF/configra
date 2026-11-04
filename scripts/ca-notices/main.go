@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 )
 
-const sourceURL = "https://security.debian.org/debian-security/pool/updates/main/c/ca-certificates/ca-certificates_20250419~deb12u1.tar.xz"
+const sourceURL = "https://snapshot-cloudflare.debian.org/file/ab7ed787f56c6ca86d0022213279936ddd2af735"
 const sourceHash = "b2a431cbab9a0ece921cffacbe238dc27a3e382ad4a1806dc8968c5eff30471d"
 const bundleHash = "714d457d580922dbf1d0be8bd35ba236a842b50b0072ae791582a19adef772a5"
 const bundlePath = "etc/ssl/certs/ca-certificates.crt"

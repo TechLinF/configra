@@ -5,10 +5,19 @@ builder. It does not read or manage Configra-issued CA keys or workload keys.
 The current profile is Debian `ca-certificates 20250419~deb12u1`; amd64 and arm64
 builder variants were checked to have identical bundle, selection and legal text.
 
-Docker downloads the exact source archive with `ADD --checksum`, then invokes the
-collector with the builder filesystem and that archive. The collector verifies
-every reviewed SHA-256 before publishing a new output directory. Changed source,
-trust data or notices need review; existing output is never silently replaced.
+Docker downloads the exact source archive from the content-addressed
+[Debian Snapshot URL](https://snapshot-cloudflare.debian.org/file/ab7ed787f56c6ca86d0022213279936ddd2af735)
+with `ADD --checksum`, then invokes the collector with the builder filesystem and
+that archive. The live security archive can remove superseded versions; the
+snapshot retains the reviewed bytes. The SHA-1 in the snapshot URL only locates
+the file; both Docker and the collector still verify the original SHA-256
+`b2a431cbab9a0ece921cffacbe238dc27a3e382ad4a1806dc8968c5eff30471d`. Only the
+download location changed: the package version, certificate bytes and license
+materials are the same reviewed inputs.
+
+The collector verifies every reviewed SHA-256 before publishing a new output
+directory. Changed source, trust data or notices need review; existing output is
+never silently replaced.
 
 The unchanged source archive preserves Mozilla's MPL-covered certificate inputs
 and Debian's GPL-covered generation/packaging scripts, with both license texts.
