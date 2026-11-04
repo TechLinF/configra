@@ -31,7 +31,7 @@ COPY scripts/go-notices ./scripts/go-notices
 COPY scripts/go-licenses ./scripts/go-licenses
 COPY scripts/ca-notices ./scripts/ca-notices
 # Use the immutable snapshot: the live security archive removes superseded sources.
-ADD --checksum=sha256:b2a431cbab9a0ece921cffacbe238dc27a3e382ad4a1806dc8968c5eff30471d https://snapshot-cloudflare.debian.org/file/ab7ed787f56c6ca86d0022213279936ddd2af735 /tmp/ca-certificates-source.tar.xz
+ADD --checksum=sha256:934942a985b2efd7a8c122cb1d42cd87911cf6ac365c545938619fcf268ea8f4 https://snapshot-cloudflare.debian.org/file/fde2c52fcb2eca9b91939d726dcce3cc6b6def90 /tmp/ca-certificates-source.tar.xz
 RUN --mount=type=cache,target=/root/.cache/go-build go run ./scripts/ca-notices -rootfs / -source /tmp/ca-certificates-source.tar.xz -out /out/licenses/ca-certificates
 RUN --mount=type=cache,target=/root/.cache/go-build go build -trimpath -buildvcs=false -o /tmp/configra-go-licenses ./scripts/go-licenses
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH sh scripts/go-notices/collect.sh /out/licenses/go1.26.10

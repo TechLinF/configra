@@ -60,10 +60,10 @@ try {
   run(['cp', `${container}:/etc/ssl/certs/ca-certificates.crt`, join(temporary, 'system-ca.crt')]);
   const caMetadata = JSON.parse(readFileSync(join(caDirectory, 'metadata.json'), 'utf8'));
   assert.equal(caMetadata.package, 'ca-certificates');
-  assert.equal(caMetadata.version, '20250419~deb12u1');
+  assert.equal(caMetadata.version, '20250419~deb12u2');
   assert.equal(caMetadata.bundle.sha256, hash(readFileSync(join(temporary, 'system-ca.crt'))));
   assert.equal(hash(readFileSync(join(caDirectory, 'source.tar.xz'))),
-    'b2a431cbab9a0ece921cffacbe238dc27a3e382ad4a1806dc8968c5eff30471d');
+    '934942a985b2efd7a8c122cb1d42cd87911cf6ac365c545938619fcf268ea8f4');
   assert.match(readFileSync(join(caDirectory, 'MPL-2.0.txt'), 'utf8'), /Mozilla Public License Version 2.0/);
   assert.match(readFileSync(join(caDirectory, 'GPL-2.0.txt'), 'utf8'), /GNU GENERAL PUBLIC LICENSE/);
   for (const file of caMetadata.files) {

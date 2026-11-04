@@ -2,16 +2,16 @@
 
 This collector handles the public system trust store copied from the pinned Go
 builder. It does not read or manage Configra-issued CA keys or workload keys.
-The current profile is Debian `ca-certificates 20250419~deb12u1`; amd64 and arm64
+The current profile is Debian `ca-certificates 20250419~deb12u2`; amd64 and arm64
 builder variants were checked to have identical bundle, selection and legal text.
 
 Docker downloads the exact source archive from the content-addressed
-[Debian Snapshot URL](https://snapshot-cloudflare.debian.org/file/ab7ed787f56c6ca86d0022213279936ddd2af735)
+[Debian Snapshot URL](https://snapshot-cloudflare.debian.org/file/fde2c52fcb2eca9b91939d726dcce3cc6b6def90)
 with `ADD --checksum`, then invokes the collector with the builder filesystem and
 that archive. The live security archive can remove superseded versions; the
 snapshot retains the reviewed bytes. The SHA-1 in the snapshot URL only locates
 the file; both Docker and the collector still verify the original SHA-256
-`b2a431cbab9a0ece921cffacbe238dc27a3e382ad4a1806dc8968c5eff30471d`. Only the
+`934942a985b2efd7a8c122cb1d42cd87911cf6ac365c545938619fcf268ea8f4`. Only the
 download location changed: the package version, certificate bytes and license
 materials are the same reviewed inputs.
 
