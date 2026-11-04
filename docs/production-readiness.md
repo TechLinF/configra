@@ -63,16 +63,14 @@ the offline transaction and recovery procedure; online rotation and a multi-key
 keyring are not required. A lost COMMIT response must be resolved with both keys
 while services remain stopped, not treated as proof of rollback.
 
-The user supplied temporary independent Linux machines on September 22 after
+Temporary independent Linux machines were provisioned on September 22 after
 the Mac runs. The initial two-vCPU/3,622-MiB VM saturated under the complete
-stack; the user released it and supplied an eight-vCPU/15,319-MiB replacement,
-also without swap. API, MySQL, NATS, ClickHouse and the load generator share
+stack and was replaced by an eight-vCPU/15,319-MiB machine, also without swap. API, MySQL, NATS, ClickHouse and the load generator share
 that host. The API remains limited to two CPUs and 512 MiB; native MySQL 8.0.22,
 query defaults and capacity thresholds are unchanged. Mac fixtures remain useful for
 the three-node Kubernetes checks; do not stop unrelated projects or equate
-arm64-host/emulated-MySQL measurements with native Linux results. Preserve the
-remote evidence and remove owned fixtures before the user releases the machine.
-Those hosts were subsequently released. Final runtime acceptance uses a new
+arm64-host/emulated-MySQL measurements with native Linux results. Those hosts
+were released after their evidence was copied back. Final runtime acceptance uses a new
 four-vCPU/7,521-MiB native Linux host: the complete stack passes the unchanged
 gate there, with the API still capped at two CPUs and 512 MiB. Its exact result,
 image and distinction from the failed hosted-runner warmup are recorded above.
