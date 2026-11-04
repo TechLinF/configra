@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import React, { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AuthorityManagement, CertificateManagement, authorityLabel } from './security/Certificates.jsx';
 import { Sessions, sessionLabel } from './security/Sessions.jsx';
@@ -127,10 +127,22 @@ const messages = {
     pagination: 'Config pagination',
     copy: 'Copy',
     copyConfiguration: 'Config content',
+    copyContent: 'Copy content',
     resetToSource: 'Reset to source',
     templateFromExisting: 'Template from existing config',
     loadTemplate: 'Load template',
     editedCopyNote: 'Edited content is saved as a new first version, not as a copy of the source revision.',
+    alreadyHasConfig: 'already has this Config',
+    preflightChecking: 'Checking against {environment}…',
+    preflightClear: 'Checked against {environment}: every Vault reference has a value there.',
+    preflightWarnings: 'Checked against {environment}: these Vault references have no value there yet.',
+    showChanges: 'Show changes',
+    hideChanges: 'Hide changes',
+    editedCopy: 'Edited',
+    newFromTemplate: 'New Config from this template',
+    cloneEditHint: 'Clone copies the saved content exactly. To change the content, start a new Config from this template.',
+    replaceWithTemplate: 'Replace the editor content with {template}',
+    templateLoaded: 'Loaded {template}.',
     copyReference: 'Copy reference',
     copyValue: 'Copy value',
     copyRequestID: 'Copy Request ID',
@@ -509,10 +521,22 @@ const messages = {
     pagination: 'Config 分页',
     copy: '复制',
     copyConfiguration: '配置内容',
+    copyContent: '复制内容',
     resetToSource: '还原为源内容',
     templateFromExisting: '从已有配置导入模板',
     loadTemplate: '加载模板',
     editedCopyNote: '编辑后的内容将作为新的首个版本保存，而不是源 Revision 的副本。',
+    alreadyHasConfig: '已有此 Config',
+    preflightChecking: '正在按 {environment} 检查…',
+    preflightClear: '已按 {environment} 检查：所有 Vault 引用在该环境都有值。',
+    preflightWarnings: '已按 {environment} 检查：以下 Vault 引用在该环境尚无值。',
+    showChanges: '查看改动',
+    hideChanges: '收起改动',
+    editedCopy: '编辑后',
+    newFromTemplate: '以此为模板新建 Config',
+    cloneEditHint: '克隆会原样复制已保存的内容。如需修改内容，请以此为模板新建 Config。',
+    replaceWithTemplate: '用 {template} 替换编辑器内容',
+    templateLoaded: '已加载 {template}。',
     copyReference: '复制引用',
     copyValue: '复制值',
     copyRequestID: '复制 Request ID',
@@ -854,14 +878,17 @@ function RevisionPagination({ history, t }) {
 }
 
 
-function EnvironmentSelect({ label, value, onChange, name, required = false, scope = '', includeArchived = false, emptyLabel, t }) {
+function EnvironmentSelect({ label, value, onChange, name, required = false, scope = '', includeArchived = false, emptyLabel, unavailable, unavailableLabel, t }) {
   const [search, setSearch] = useState('');
   const collection = useInventory(`/v1/environments?include_archived=${includeArchived}&q=${encodeURIComponent(search)}${scope}`);
   return <div className="environment-select">
     <label><span>{label}</span><select aria-label={label} name={name} required={required} value={value} onChange={event => onChange(event.target.value)}>
       <option value="">{emptyLabel || t.environment}</option>
       {value && !collection.items.some(item => item.key === value) && <option value={value}>{value}</option>}
-      {collection.items.map(item => <option key={item.key} value={item.key}>{item.display_name} · {item.key}</option>)}
+      {collection.items.map(item => {
+        const taken = unavailable?.has(item.key) && item.key !== value;
+        return <option key={item.key} value={item.key} disabled={taken}>{item.display_name} · {item.key}{taken ? ` · ${unavailableLabel}` : ''}</option>;
+      })}
     </select></label>
     <input type="search" aria-label={`${label} · ${t.search}`} placeholder={t.search} value={search} onChange={event => setSearch(event.target.value)} />
     <InventoryPagination collection={collection} t={t} hideSinglePage />
@@ -1378,8 +1405,62 @@ function EnvironmentDetail({ environmentKey, t }) {
   </ResourcePage>;
 }
 
+// Searches every active Config (not the list's current page or filters). A template replaces the editor
+// only while the editor is empty or still holds an untouched template; otherwise the replacement is explicit.
+function ConfigTemplatePicker({ initialConfig = '', initialEnvironment = '', replaceable, onLoad, t }) {
+  const [search, setSearch] = useState('');
+  const [configKey, setConfigKey] = useState(initialConfig);
+  const [environmentKey, setEnvironmentKey] = useState(initialEnvironment);
+  const [fetched, setFetched] = useState({ status: 'idle' });
+  const configs = useInventory(`/v1/configs?${new URLSearchParams({ status: 'active', q: search })}`);
+  useEffect(() => {
+    if (!configKey || !environmentKey) { setFetched({ status: 'idle' }); return undefined; }
+    let live = true;
+    setFetched({ status: 'loading' });
+    request(`/v1/environments/${encodeURIComponent(environmentKey)}/configs/${encodeURIComponent(configKey)}`)
+      .then(template => live && setFetched({ status: 'ready', template, applied: false }))
+      .catch(failure => live && setFetched({ status: 'failed', error: managementError(failure, t, t.loadFailed) }));
+    return () => { live = false; };
+  }, [configKey, environmentKey]);
+  const apply = () => {
+    onLoad(fetched.template);
+    setFetched(current => ({ ...current, applied: true }));
+  };
+  useEffect(() => {
+    if (fetched.status === 'ready' && !fetched.applied && replaceable) apply();
+  }, [fetched, replaceable]);
+  const name = fetched.template ? `${fetched.template.environment_key}/${fetched.template.config_key}@v${fetched.template.revision}` : '';
+  return <div className="template-import-bar">
+    <div className="environment-select">
+      <label><span>{t.templateFromExisting}</span><select value={configKey} onChange={event => {
+        const nextKey = event.target.value;
+        setConfigKey(nextKey);
+        setEnvironmentKey(configs.items.find(candidate => candidate.key === nextKey)?.environments?.[0]?.key || '');
+      }}>
+        <option value="">—</option>
+        {configKey && !configs.items.some(item => item.key === configKey) && <option value={configKey}>{configKey}</option>}
+        {configs.items.filter(item => item.environments?.length > 0).map(item => <option key={item.key} value={item.key}>{item.display_name} · {item.key}</option>)}
+      </select></label>
+      <input type="search" aria-label={`${t.templateFromExisting} · ${t.search}`} placeholder={t.search} value={search} onChange={event => setSearch(event.target.value)} />
+      <InventoryPagination collection={configs} t={t} hideSinglePage />
+    </div>
+    {configKey && <EnvironmentSelect label={`${t.templateFromExisting} · ${t.environment}`} value={environmentKey} scope={`&config=${encodeURIComponent(configKey)}`} onChange={setEnvironmentKey} t={t} />}
+    <div className="template-import-status">
+      {fetched.status === 'loading' && <span className="loading-line" aria-busy="true" />}
+      {fetched.status === 'ready' && fetched.applied && <p className="muted-note" role="status">{t.templateLoaded.replace('{template}', name)}</p>}
+      {fetched.status === 'ready' && !fetched.applied && !replaceable && <button type="button" onClick={apply}>{t.replaceWithTemplate.replace('{template}', name)}</button>}
+      {fetched.status === 'failed' && <ActionError error={fetched.error} t={t} />}
+    </div>
+  </div>;
+}
+
 function Configs({ principal, filters = new URLSearchParams(), t }) {
-  const [creating, setCreating] = useState(false);
+  const templateLink = principal.role === 'admin' && filters.get('new') === '1' ? { config: filters.get('template') || '', environment: filters.get('template_environment') || '' } : null;
+  const [creating, setCreating] = useState(Boolean(templateLink));
+  const [createSession, setCreateSession] = useState(0);
+  const [templateSeed, setTemplateSeed] = useState(templateLink);
+  const [loadedTemplate, setLoadedTemplate] = useState(null);
+  const [createMutate, resetCreate] = useMutation(request);
   const [confirming, setConfirming] = useState('');
   const [error, setError] = useState(null);
   const [warnings, setWarnings] = useState([]);
@@ -1390,11 +1471,12 @@ function Configs({ principal, filters = new URLSearchParams(), t }) {
   const [initialPage, setInitialPage] = useState(() => Math.max(1, Number.parseInt(filters.get('page'), 10) || 1));
   const [createFormat, setCreateFormat] = useState('yaml');
   const [createContent, setCreateContent] = useState('');
-  const [createEnvironment, setCreateEnvironment] = useState('');
-  const [templateConfigKey, setTemplateConfigKey] = useState('');
-  const [templateEnvKey, setTemplateEnvKey] = useState('');
+  const [createEnvironment, setCreateEnvironment] = useState(templateLink?.environment || '');
   const state = useInventory(`/v1/configs?${new URLSearchParams({ status: statusFilter, environment: environmentFilter, q: query, unbound: String(filters.get('unbound') === 'true') })}`, refresh, initialPage);
   const filterKey = filters.toString();
+  useEffect(() => {
+    if (templateLink) replaceHashQuery({ new: '', template: '', template_environment: '' });
+  }, []);
   useEffect(() => {
     setQuery(filters.get('q') || '');
     setStatusFilter(filters.get('status') || 'active');
@@ -1407,13 +1489,12 @@ function Configs({ principal, filters = new URLSearchParams(), t }) {
     const data = new FormData(event.currentTarget);
     if (!createContent.trim()) return setError({ message: t.saveFailed });
     try {
-      const result = await request(`/v1/environments/${encodeURIComponent(data.get('environment'))}/configs/${encodeURIComponent(data.get('key'))}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
-        body: JSON.stringify({ name: data.get('display_name'), expected_revision: 0, format: createFormat, content: createContent }),
-      });
+      // The same request keeps its operation ID, so a retry after a lost response replays instead of conflicting.
+      const result = await createMutate(`/v1/environments/${encodeURIComponent(data.get('environment'))}/configs/${encodeURIComponent(data.get('key'))}`,
+        { name: data.get('display_name'), expected_revision: 0, format: createFormat, content: createContent }, 'PUT');
       setWarnings(result.warnings || []);
       setCreating(false);
+      resetCreate();
       setCreateContent('');
       setRefresh(value => value + 1);
     } catch (error) {
@@ -1431,37 +1512,15 @@ function Configs({ principal, filters = new URLSearchParams(), t }) {
   };
   return (
     <ResourcePage className="config-index-page" eyebrow="CFG / canonical YAML + JSON" title={t.configs} body={t.configBody}
-      action={principal.role === 'admin' && <button className="primary-action compact-action" type="button" onClick={() => { setCreating(value => !value); setCreateFormat('yaml'); setCreateContent(''); setWarnings([]); }}>{t.newConfig}</button>}>
+      action={principal.role === 'admin' && <button className="primary-action compact-action" type="button" onClick={() => { setCreating(value => !value); setCreateSession(value => value + 1); setTemplateSeed(null); setLoadedTemplate(null); resetCreate(); setCreateFormat('yaml'); setCreateContent(''); setWarnings([]); }}>{t.newConfig}</button>}>
       {creating && <form className="config-create-form" onSubmit={create}>
         <EnvironmentSelect label={t.environment} name="environment" required value={createEnvironment} onChange={setCreateEnvironment} t={t} />
         <label>{t.resourceKey}<input name="key" required maxLength="63" pattern="[a-z][a-z0-9_-]{0,62}" autoComplete="off" /></label>
         <label>{t.displayName}<input name="display_name" required maxLength="255" autoComplete="off" /></label>
         <label>{t.format}<select name="format" value={createFormat} onChange={event => setCreateFormat(event.target.value)}><option value="yaml">YAML</option><option value="json">JSON</option></select></label>
-        <div className="template-import-bar">
-          <label>{t.templateFromExisting}
-            <select value={templateConfigKey} onChange={event => {
-              const nextKey = event.target.value;
-              setTemplateConfigKey(nextKey);
-              setTemplateEnvKey(state.items.find(candidate => candidate.key === nextKey)?.environments?.[0]?.key || '');
-            }}>
-              <option value="">—</option>
-              {state.items.filter(item => item.environments?.length > 0).map(item => <option key={item.key} value={item.key}>{item.display_name} · {item.key}</option>)}
-            </select>
-          </label>
-          {templateConfigKey && <EnvironmentSelect label={`${t.templateFromExisting} · ${t.environment}`} value={templateEnvKey} scope={`&config=${encodeURIComponent(templateConfigKey)}`} onChange={setTemplateEnvKey} t={t} />}
-          {templateConfigKey && templateEnvKey && <button type="button" onClick={async event => {
-            const form = event.currentTarget.closest('form');
-            try {
-              const template = await request(`/v1/environments/${encodeURIComponent(templateEnvKey)}/configs/${encodeURIComponent(templateConfigKey)}`);
-              setCreateFormat(template.format);
-              setCreateContent(template.content);
-              const nameInput = form?.elements.namedItem('display_name');
-              if (nameInput && !nameInput.value) nameInput.value = template.config_name;
-            } catch (failure) {
-              setError(managementError(failure, t, t.loadFailed));
-            }
-          }}>{t.loadTemplate}</button>}
-        </div>
+        <ConfigTemplatePicker key={createSession} initialConfig={templateSeed?.config} initialEnvironment={templateSeed?.environment}
+          replaceable={!createContent.trim() || createContent === loadedTemplate}
+          onLoad={template => { setCreateFormat(template.format); setCreateContent(template.content); setLoadedTemplate(template.content); }} t={t} />
         <div className="form-source"><span>{t.configurationSource}</span><ConfigCodeEditor label={t.configurationSource} value={createContent} format={createFormat} readOnly={false} onChange={setCreateContent} /></div>
         <div className="form-actions"><ActionError error={error} t={t} /><button className="primary-action compact-action" type="submit" disabled={!createContent.trim()}>{t.createConfig}</button></div>
       </form>}
@@ -2557,7 +2616,7 @@ function ConfigDetail({ principal, configKey, environmentKey, t }) {
             </div>
             {principal.role === 'admin' && <button type="button" aria-pressed={tab === 'copy'} onClick={() => setTab('copy')}>{t.copyToEnvironment}</button>}
             {principal.role === 'admin' && <button className="config-edit-action" type="button" aria-pressed={tab === 'raw' && viewingCurrent} onClick={() => showCurrent('raw')}>{t.editConfig}</button>}
-            {principal.role === 'admin' && <details className="detail-more-actions"><summary aria-label={t.moreActions}>•••</summary><button type="button" onClick={event => { event.currentTarget.closest('details').removeAttribute('open'); setTab('clone'); }}>{t.clone}</button></details>}
+            {principal.role === 'admin' && <details className="detail-more-actions"><summary aria-label={t.moreActions}>•••</summary><div className="detail-more-menu"><button type="button" onClick={event => { event.currentTarget.closest('details').removeAttribute('open'); setTab('clone'); }}>{t.clone}</button><a href={`#/configs?${new URLSearchParams({ new: '1', template: configKey, template_environment: environmentKey })}`}>{t.newFromTemplate}</a></div></details>}
           </div>
         </div>
       </div>
@@ -2577,7 +2636,7 @@ function ConfigDetail({ principal, configKey, environmentKey, t }) {
             inspection.status === 'loading' ? <div className="collection-state"><span className="loading-line" /></div>
               : inspection.status === 'failed' ? <p className="inline-error" role="alert">{t.operationFailed}</p>
                 : <section className="editor-panel">
-                  <div className="editor-toolbar"><span>{viewedFormat.toUpperCase()}</span><code>{t.revision} {viewedRevision}</code><CopyValue value={viewedContent} label={t.copyConfiguration} t={t} /></div>
+                  <div className="editor-toolbar"><span>{viewedFormat.toUpperCase()}</span><div className="editor-toolbar-actions"><code>{t.revision} {viewedRevision}</code><CopyValue value={viewedContent} label={t.copyConfiguration} display={t.copyContent} t={t} /></div></div>
                   <ConfigCodeEditor label={viewingCurrent ? t.configurationSource : t.revisionLabel.replace('{revision}', viewedRevision)} value={viewedContent} format={viewedFormat} readOnly={!viewingCurrent || principal.role !== 'admin'} onChange={value => { setSource(value); setSaveError(null); setValidation({ status: 'idle', warnings: [] }); }} />
                   {principal.role === 'admin' && viewingCurrent && <div className="editor-actions">
                     <div className="editor-feedback" role="status">
@@ -2624,7 +2683,7 @@ function ConfigDetail({ principal, configKey, environmentKey, t }) {
                 else window.location.hash = `/configs/${configKey}/${targetEnvironment}`;
               }} />
           ) : (
-            <ConfigCopy key={`${path}/${tab}`} path={path} config={state.config} newConfig={tab === 'clone'} t={t} />
+            <ConfigCopy key={`${path}/${tab}`} path={path} config={state.config} newConfig={tab === 'clone'} existingEnvironments={new Set(contexts.items.map(environment => environment.key))} t={t} />
           )}
         </div>
         {!operationMode && <aside className="config-meta-panel">
@@ -2808,13 +2867,35 @@ function ResolvedPreview({ path, t }) {
   );
 }
 
-function ConfigCopy({ path, config, newConfig, t }) {
+function ConfigCopy({ path, config, newConfig, existingEnvironments, t }) {
   const [environment, setEnvironment] = useState('');
   const [state, setState] = useState({ status: 'idle' });
   const [mutate, resetMutation] = useMutation(request);
   // Clone keeps the server-side clone so its globally-new-key check still applies; only Copy to environment may edit.
   const [content, setContent] = useState(config.content);
   const edited = !newConfig && content !== config.content;
+  const [showChanges, setShowChanges] = useState(false);
+  const diffTarget = useDeferredValue(content);
+  // Check the content against the chosen target before anything is written: syntax errors block the
+  // write, and Vault references without a value in that Environment are shown as warnings.
+  const [preflight, setPreflight] = useState({ status: 'idle' });
+  useEffect(() => {
+    if (!environment || !content.trim()) { setPreflight({ status: 'idle' }); return undefined; }
+    let live = true;
+    setPreflight({ status: 'checking', environment });
+    const timer = window.setTimeout(() => {
+      request('/v1/configs/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ environment, format: config.format, content }),
+      })
+        .then(result => live && setPreflight({ status: 'ready', environment, warnings: result.warnings || [] }))
+        .catch(error => live && setPreflight(error.status === 422
+          ? { status: 'invalid', environment, error: managementError(error, t, t.config_document_invalid) }
+          : { status: 'failed', environment }));
+    }, 350);
+    return () => { live = false; window.clearTimeout(timer); };
+  }, [environment, content]);
   const submit = async event => {
     event.preventDefault();
     if (state.status === 'loading' || state.status === 'ready') return;
@@ -2841,24 +2922,33 @@ function ConfigCopy({ path, config, newConfig, t }) {
   };
   return <section className="transfer-panel config-copy-panel">
     <p>{newConfig ? t.cloneExplanation : t.copyExplanation}</p>
+    {newConfig && <p className="muted-note"><a href={`#/configs?${new URLSearchParams({ new: '1', template: config.config_key, template_environment: config.environment_key })}`}>{t.cloneEditHint}</a></p>}
     <p><code>{`${config.environment_key}/${config.config_key}@v${config.revision}`}</code></p>
     <p className="muted-note">{t.copySavedRevision.replace('{revision}', config.revision)}</p>
     <form onSubmit={submit} onChange={change}>
       <fieldset className="clone-form" disabled={state.status === 'loading'}>
-        <EnvironmentSelect label={t.targetEnvironment} name="target_environment" required value={environment} onChange={setEnvironment} t={t} />
+        <EnvironmentSelect label={t.targetEnvironment} name="target_environment" required value={environment} onChange={setEnvironment}
+          unavailable={newConfig ? undefined : existingEnvironments} unavailableLabel={t.alreadyHasConfig} t={t} />
         {newConfig && <><label>{t.targetConfig}<input name="target_config" required pattern="[a-z][a-z0-9_-]{0,62}" /></label>
           <label>{t.targetName}<input name="target_name" required maxLength="255" defaultValue={config.config_name} /></label></>}
         <div className="form-actions">
-          <button className="primary-action compact-action" type="submit" disabled={!environment || !content.trim() || state.status === 'loading' || state.status === 'ready'}>{newConfig ? t.cloneConfig : t.copyFirstVersion.replace('{environment}', environment || '…')}</button>
+          <button className="primary-action compact-action" type="submit" disabled={!environment || !content.trim() || preflight.status === 'invalid' || state.status === 'loading' || state.status === 'ready'}>{newConfig ? t.cloneConfig : t.copyFirstVersion.replace('{environment}', environment || '…')}</button>
         </div>
       </fieldset>
     </form>
     <ActionError error={state.error} t={t} />
+    {state.status !== 'ready' && preflight.status === 'checking' && <p className="muted-note" role="status">{t.preflightChecking.replace('{environment}', preflight.environment)}</p>}
+    {state.status !== 'ready' && preflight.status === 'ready' && preflight.environment === environment && (preflight.warnings.length
+      ? <div className="config-warning-list" role="status"><strong>{t.preflightWarnings.replace('{environment}', environment)}</strong><ConfigWarningLines warnings={preflight.warnings} t={t} /></div>
+      : <p className="muted-note" role="status">{t.preflightClear.replace('{environment}', environment)}</p>)}
+    {state.status !== 'ready' && preflight.status === 'invalid' && <ActionError error={preflight.error} t={t} />}
     {state.status === 'ready' && <p className="success-note" role="status">{t.copyComplete.replace('{target}', `${state.environment}/${state.targetConfig}`).replace('{revision}', state.result.revision)}</p>}
     {(state.status === 'ready' || state.reason === 'target_config_exists') && <p><a href={`#/configs/${encodeURIComponent(state.targetConfig)}/${encodeURIComponent(state.environment)}`}>{t.openTargetConfig}</a></p>}
     {state.result?.warnings?.length > 0 && <div className="config-warning-list" role="status"><ConfigWarningLines warnings={state.result.warnings} t={t} /></div>}
-    <div className="editor-toolbar"><span>{config.format.toUpperCase()}</span><CopyValue value={content} label={t.copyConfiguration} t={t} />{edited && <button type="button" onClick={() => { setContent(config.content); change(); }}>{t.resetToSource}</button>}</div>
+    <div className="editor-toolbar"><span>{config.format.toUpperCase()}</span><div className="editor-toolbar-actions">{edited && <button type="button" aria-pressed={showChanges} onClick={() => setShowChanges(value => !value)}>{showChanges ? t.hideChanges : t.showChanges}</button>}{edited && <button type="button" onClick={() => { setContent(config.content); setShowChanges(false); change(); }}>{t.resetToSource}</button>}<CopyValue value={content} label={t.copyConfiguration} display={t.copyContent} t={t} /></div></div>
     {edited && <p className="muted-note" role="status">{t.editedCopyNote}</p>}
+    {edited && showChanges && <ConfigDiffEditor source={config.content} target={diffTarget} sourceFormat={config.format} targetFormat={config.format}
+      sourceLabel={`${config.environment_key}/${config.config_key}@v${config.revision}`} targetLabel={t.editedCopy} t={t} />}
     <ConfigCodeEditor label={t.source} readOnly={newConfig} value={content} format={config.format} onChange={value => { setContent(value); change(); }} />
   </section>;
 }

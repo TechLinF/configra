@@ -181,6 +181,10 @@ records; bounded response size is not a constant-time query guarantee.
 - The Management UI lists Environments, Configs, Vault Items and API Tokens with
   a Status filter that defaults to **Active**; choose Archived/Revoked or All to
   see inactive rows. A non-default status is kept in the page URL.
+- `#/configs?new=1&template=<config>&template_environment=<environment>` opens the
+  create form with that Config's content loaded as a template; the parameters are
+  removed from the URL once the form opens. Copy to environment checks content with
+  `POST /v1/configs/validate` against the chosen target before any write.
 - Config supports exact `environment` and `unbound=true` (no active environment).
   Vault supports exact `namespace` and `environment` filters. Environment lists
   support `config`, paired `namespace` + `item`, and Admin-only `token`.
