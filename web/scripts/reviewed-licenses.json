@@ -264,10 +264,10 @@
     },
     {
       "name": "rolldown",
-      "version": "1.2.6",
+      "version": "1.2.16",
       "license": "MIT",
-      "archive": "https://registry.npmjs.org/rolldown/-/rolldown-1.2.6.tgz",
-      "integrity": "sha512-vMM4q3aixf46GiF1Kok8jDPFsEpXgFWGjUHXNkNHNm+Y2adXAG2dbX91jkti3i0ZRsOlcmbuzAz1poObSHCmUA==",
+      "archive": "https://registry.npmjs.org/rolldown/-/rolldown-1.2.16.tgz",
+      "integrity": "sha512-bWvlMpFKiTfDKfnK7FC2MPgPeWCf/Kpwsq49ApdW+FQaBZb6O6dZ4MAPbPUjp7hYQrw/RobqCzn64BRrQecGHw==",
       "files": [
         {
           "path": "LICENSE",
@@ -307,14 +307,14 @@
     },
     {
       "name": "vite",
-      "version": "8.2.2",
+      "version": "8.3.5",
       "license": "MIT",
-      "archive": "https://registry.npmjs.org/vite/-/vite-8.2.2.tgz",
-      "integrity": "sha512-cFKLV/PRgAUlIRm5WjMjJ86jrftzpqcgH+Us+DS8mI3CDNiH30Whrz8uHL3+MOLPAgqbMBAqWdAHAphOAM+z/Q==",
+      "archive": "https://registry.npmjs.org/vite/-/vite-8.3.5.tgz",
+      "integrity": "sha512-z1YpjieJ9g0ebTmQpLBv/oq9E3F9EIlOe+7LahW8SrE3LTiG3udBRUXQOlYXP9b+IC2q2phHeVxj9xGlw34OEQ==",
       "files": [
         {
           "path": "LICENSE.md",
-          "sha256": "387dd7baa307083401a27c58c362c30832f5ba1dba84f10cc22c33401523f45c"
+          "sha256": "a22152baa1aef74402443008e767e7c689a524c0909d19b0431d97f5ab066a13"
         }
       ]
     },
