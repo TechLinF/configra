@@ -1,12 +1,19 @@
 import { expect, test } from '@playwright/test';
 import { inventoryPage } from './inventory.js';
 
-async function sourcePage(page) {
+async function sourcePage(page, { configEnvironments = ['test', 'qa'] } = {}) {
   await page.route('**/v1/me', route => route.fulfill({ json: { subject: 'admin-1', role: 'admin' } }));
   await page.route(/\/v1\/(configs|vault-items)(\?|$)/, route => route.fulfill({ body: inventoryPage(route, []) }));
-  await page.route(/\/v1\/environments\?/, route => route.fulfill({ body: inventoryPage(route, [
-    { key: 'test', display_name: 'Test', revision: 3 }, { key: 'production', display_name: 'Production' }, { key: 'retired', display_name: 'Retired', archived: true },
-  ]) }));
+  const environments = [
+    { key: 'test', display_name: 'Test', revision: 3 }, { key: 'production', display_name: 'Production' },
+    { key: 'qa', display_name: 'QA', revision: 1 }, { key: 'retired', display_name: 'Retired', archived: true },
+  ];
+  // Like the server, ?config= lists only the Environments that already have that Config.
+  const withConfig = { server: configEnvironments };
+  await page.route(/\/v1\/environments\?/, route => {
+    const config = new URL(route.request().url()).searchParams.get('config');
+    return route.fulfill({ body: inventoryPage(route, config ? environments.filter(item => withConfig[config]?.includes(item.key)) : environments) });
+  });
   await page.route('**/v1/environments/test/configs/server**', route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/revisions')) return route.fulfill({ json: { items: [{ revision: 3, format: 'yaml', created_at: '2026-10-15T00:00:00Z' }] } });
@@ -78,7 +85,7 @@ test('clone explains global name collisions and retries a lost response with the
 });
 
 test('transfer preserves preview errors and retries, then refreshes a stale target explicitly', async ({ page }) => {
-  await sourcePage(page);
+  await sourcePage(page, { configEnvironments: ['test', 'production'] });
   let previews = 0;
   const attempts = [];
   await page.route('**/v1/environments/production/configs/server**', route => {
@@ -211,4 +218,60 @@ test('clone keeps the saved source read-only so the server-side clone checks sti
   await sourcePage(page);
   await openClone(page);
   await expect(page.getByLabel('Source', { exact: true })).toHaveAttribute('aria-readonly', 'true');
+});
+
+test('the copy target picker marks environments that already have this Config', async ({ page }) => {
+  await sourcePage(page);
+  await page.getByRole('button', { name: 'Copy to environment', exact: true }).click();
+  const target = page.getByLabel('Target environment', { exact: true });
+  await expect(target.locator('option[value="qa"]')).toHaveAttribute('disabled', '');
+  await expect(target.locator('option[value="qa"]')).toContainText('already has this Config');
+  await expect(target.locator('option[value="production"]')).not.toHaveAttribute('disabled', '');
+});
+
+test('copy checks the content against the target environment before writing', async ({ page }) => {
+  await sourcePage(page);
+  const checks = [];
+  await page.route('**/v1/configs/validate', async route => {
+    const body = route.request().postDataJSON();
+    checks.push(body);
+    if (body.content.includes('{{')) return route.fulfill({ status: 422, json: { error: { code: 'validation_failed', reason: 'config_document_invalid', field: 'content', request_id: 'req-syntax' } } });
+    return route.fulfill({ json: { format: 'yaml', content: body.content, warnings: [{ code: 'missing_vault_environment_variant', namespace_key: 'app', item_key: 'db', field_key: 'password' }] } });
+  });
+  let writes = 0;
+  await page.route('**/v1/environments/production/configs/server**', route => { writes += 1; return route.fulfill({ json: { outcome: 'success', revision: 1 } }); });
+  await page.getByRole('button', { name: 'Copy to environment', exact: true }).click();
+  await page.getByLabel('Target environment', { exact: true }).selectOption('production');
+  await expect(page.getByText('Checked against production: these Vault references have no value there yet.')).toBeVisible();
+  await expect(page.getByText('{vault.app.db.password}').first()).toBeVisible();
+  expect(checks[0]).toEqual({ environment: 'production', format: 'yaml', content: "port: 6380\npassword: '{vault.app.db.password}'\n" });
+
+  await page.getByLabel('Source', { exact: true }).click();
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.type('port: {{broken\n');
+  await expect(page.getByRole('alert')).toContainText('req-syntax');
+  await expect(page.getByRole('button', { name: 'Create first version in production' })).toBeDisabled();
+  expect(writes).toBe(0);
+});
+
+test('edited copy content can be reviewed as a diff against the source revision', async ({ page }) => {
+  await sourcePage(page);
+  await page.getByRole('button', { name: 'Copy to environment', exact: true }).click();
+  await page.getByLabel('Source', { exact: true }).click();
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.type('port: 7380\n');
+  await page.getByRole('button', { name: 'Show changes' }).click();
+  await expect(page.locator('.config-diff-panel')).toContainText('test/server@v3');
+  await expect(page.locator('.config-diff-panel')).toContainText('Edited');
+  await page.getByRole('button', { name: 'Reset to source' }).click();
+  await expect(page.locator('.config-diff-panel')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Show changes' })).toHaveCount(0);
+});
+
+test('clone points to an editable start from the same template', async ({ page }) => {
+  await sourcePage(page);
+  await openClone(page);
+  await expect(page.getByRole('link', { name: /start a new Config from this template/ })).toHaveAttribute('href', '#/configs?new=1&template=server&template_environment=test');
+  await page.locator('summary[aria-label="More actions"]').click();
+  await expect(page.getByRole('link', { name: 'New Config from this template', exact: true })).toHaveAttribute('href', '#/configs?new=1&template=server&template_environment=test');
 });
