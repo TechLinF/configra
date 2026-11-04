@@ -1125,7 +1125,7 @@ function SessionMonitor({ principal, t }) {
   recheckRef.current = recheck;
   useEffect(() => {
     const end = () => setEnded(true);
-    const active = () => setLastActivity(Date.now());
+    const active = event => setLastActivity(current => Math.max(current, event.detail || Date.now()));
     window.addEventListener('configra:session-ended', end);
     window.addEventListener('configra:session-activity', active);
     let channel = null;

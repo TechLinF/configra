@@ -82,7 +82,9 @@ test('the idle timeout is announced and can be extended deliberately', async ({ 
   await page.clock.install({ time: new Date('2026-11-05T09:00:00Z') });
   const state = await workspace(page, { me: { ...principal, session_idle_timeout_seconds: 300, session_lifetime_seconds: 28800, session_expires_at: '2026-11-05T17:00:00Z' } });
   await page.goto('/ui/#/configs');
-  await expect(page.getByRole('heading', { name: 'Configs' })).toBeVisible();
+  // Let the page's own requests finish so they cannot land during the clock jump.
+  await expect(page.getByText('No managed resources yet.')).toBeVisible();
+  await page.waitForLoadState('networkidle');
   await expect(page.locator('.session-banner')).toHaveCount(0);
   await page.clock.fastForward('03:30');
   await expect(page.locator('.session-banner')).toContainText('signed out in about two minutes');
