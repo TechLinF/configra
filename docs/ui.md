@@ -150,6 +150,7 @@ GET /v1/environments?limit=50&offset=0
 GET /v1/configs?limit=50&offset=0&q=payment
 GET /v1/vault-items?limit=50&namespace=platform&environment=production
 GET /v1/api-tokens?limit=50&offset=0
+GET /v1/api-tokens?status=active&expiring_within_days=14
 GET /v1/environments?config=payment&limit=50&offset=50
 GET /v1/environments?token=<public_id>&include_archived=true&limit=50
 GET /v1/certificate-authorities?include_revoked=true&limit=50
@@ -185,6 +186,16 @@ records; bounded response size is not a constant-time query guarantee.
   create form with that Config's content loaded as a template; the parameters are
   removed from the URL once the form opens. Copy to environment checks content with
   `POST /v1/configs/validate` against the chosen target before any write.
+- API Tokens accept `expiring_within_days` (1–365): Tokens whose expiry falls within
+  that window, including ones that already expired. The Overview lists the soonest
+  five for administrators, and the Token list marks a Token "Expires soon" inside
+  the same 14-day window.
+- **Replace** on an API Token prefills a new Token with the same access: name,
+  every active Environment grant (read in full from `?token=`), the mTLS setting and,
+  for a write-scoped Token, its exact Config and Namespace scopes. The old Token
+  keeps working until the administrator revokes it from the replacement steps
+  (create-overlap-revoke, ADR-0019). Deployment credentials are reissued with
+  `configractl`, so they have no Replace action.
 - Config supports exact `environment` and `unbound=true` (no active environment).
   Vault supports exact `namespace` and `environment` filters. Environment lists
   support `config`, paired `namespace` + `item`, and Admin-only `token`.
