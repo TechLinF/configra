@@ -56,7 +56,7 @@ type ConfigRepository interface {
 	CommitVault(context.Context, mysqlstore.VaultCommit) (mysqlstore.VaultCommitResult, error)
 	RestoreVault(context.Context, mysqlstore.VaultRestore) (mysqlstore.VaultCommitResult, error)
 	ApplyVaultLifecycleChange(context.Context, mysqlstore.VaultLifecycleChange) (mysqlstore.VaultLifecycleResult, error)
-	ListTokens(context.Context, mysqlstore.InventoryQuery) (mysqlstore.InventoryPage[mysqlstore.TokenSummary], error)
+	ListTokens(context.Context, mysqlstore.TokenQuery) (mysqlstore.InventoryPage[mysqlstore.TokenSummary], error)
 	CreateToken(context.Context, mysqlstore.TokenCreate) (mysqlstore.TokenCreateResult, error)
 	SetTokenEnvironments(context.Context, mysqlstore.TokenEnvironmentChange) (mysqlstore.TokenEnvironmentResult, error)
 	RevokeToken(context.Context, mysqlstore.TokenRevoke) (mysqlstore.TokenRevokeResult, error)
@@ -856,11 +856,20 @@ func (server *server) listTokens(response http.ResponseWriter, request *http.Req
 	if _, ok := requireAdmin(response, request); !ok {
 		return
 	}
-	query, _, ok := parseInventoryQuery(response, request, "include_revoked")
+	query, values, ok := parseInventoryQuery(response, request, "include_revoked", "expiring_within_days")
 	if !ok {
 		return
 	}
-	tokens, err := server.configs.ListTokens(request.Context(), query)
+	tokenQuery := mysqlstore.TokenQuery{InventoryQuery: query}
+	if values.Has("expiring_within_days") {
+		days, err := strconv.Atoi(values.Get("expiring_within_days"))
+		if err != nil || days < 1 || days > mysqlstore.MaxTokenExpiryWindowDays {
+			writeError(response, http.StatusBadRequest, "invalid_request")
+			return
+		}
+		tokenQuery.ExpiringWithinDays = days
+	}
+	tokens, err := server.configs.ListTokens(request.Context(), tokenQuery)
 	if err != nil {
 		writeReadError(response, err)
 		return
