@@ -179,6 +179,14 @@ records; bounded response size is not a constant-time query guarantee.
 - Default lists exclude archived/revoked rows. Use `include_archived=true` or
   `include_revoked=true`, or `status=active|all|archived` (`revoked` for credentials).
   Do not combine `status` with an `include_*` flag.
+- `/v1/me` reports `session_expires_at`, `session_idle_timeout_seconds` and
+  `session_lifetime_seconds`. The UI warns two minutes before the idle timeout
+  (**Stay signed in** makes one request) and ten minutes before the session ends.
+  A 401 from any request shows a banner instead of the sign-in page, so unsaved
+  work stays; **Sign in in a new tab** returns to `/ui/?signed-in=1`, which notifies
+  the original tab, and that tab reloads if the identity or role changed. Limits are
+  set in Cold-start Configuration (`sessions`, ADR-0035) and shown read-only under
+  Deployment status.
 - The Management UI lists Environments, Configs, Vault Items and API Tokens with
   a Status filter that defaults to **Active**; choose Archived/Revoked or All to
   see inactive rows. A non-default status is kept in the page URL.

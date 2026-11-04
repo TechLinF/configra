@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"go.yaml.in/yaml/v3"
 
@@ -41,6 +42,51 @@ type Config struct {
 	WriteTokens    WriteTokenConfig     `yaml:"write_tokens,omitempty"`
 	Observability  ObservabilityConfig  `yaml:"observability,omitempty"`
 	APIWriteLimits APIWriteLimitsConfig `yaml:"api_write_limits,omitempty"`
+	Sessions       *SessionsConfig      `yaml:"sessions,omitempty"`
+}
+
+// SessionsConfig bounds administrator sessions on the Management Server. The
+// values are read once at startup so every replica applies the same limits.
+type SessionsConfig struct {
+	IdleTimeoutMinutes int `yaml:"idle_timeout_minutes,omitempty"`
+	LifetimeHours      int `yaml:"lifetime_hours,omitempty"`
+}
+
+const (
+	DefaultSessionIdleTimeoutMinutes = 30
+	DefaultSessionLifetimeHours      = 8
+	MinSessionIdleTimeoutMinutes     = 5
+	MaxSessionIdleTimeoutMinutes     = 24 * 60
+	MaxSessionLifetimeHours          = 7 * 24
+)
+
+func (sessions *SessionsConfig) validate() error {
+	if sessions.IdleTimeoutMinutes == 0 {
+		sessions.IdleTimeoutMinutes = DefaultSessionIdleTimeoutMinutes
+	}
+	if sessions.LifetimeHours == 0 {
+		sessions.LifetimeHours = DefaultSessionLifetimeHours
+	}
+	if sessions.IdleTimeoutMinutes < MinSessionIdleTimeoutMinutes || sessions.IdleTimeoutMinutes > MaxSessionIdleTimeoutMinutes {
+		return errors.New("session idle timeout must be between 5 and 1440 minutes")
+	}
+	if sessions.LifetimeHours < 1 || sessions.LifetimeHours > MaxSessionLifetimeHours {
+		return errors.New("session lifetime must be between 1 and 168 hours")
+	}
+	if sessions.IdleTimeoutMinutes > sessions.LifetimeHours*60 {
+		return errors.New("session idle timeout must not exceed the session lifetime")
+	}
+	return nil
+}
+
+// SessionLimits returns the configured administrator session limits, or the defaults.
+func (config Config) SessionLimits() (idle, lifetime time.Duration) {
+	idle, lifetime = DefaultSessionIdleTimeoutMinutes*time.Minute, DefaultSessionLifetimeHours*time.Hour
+	if config.Sessions != nil {
+		idle = time.Duration(config.Sessions.IdleTimeoutMinutes) * time.Minute
+		lifetime = time.Duration(config.Sessions.LifetimeHours) * time.Hour
+	}
+	return idle, lifetime
 }
 
 type APIWriteLimitsConfig struct {
@@ -230,6 +276,9 @@ func (config *Config) validate(mode Mode) error {
 		if config.Notifications != nil {
 			return errors.New("Notifications configuration is not valid for API Server")
 		}
+		if config.Sessions != nil {
+			return errors.New("Sessions configuration is not valid for API Server")
+		}
 		if config.NATS == nil {
 			return errors.New("API Server NATS configuration is required")
 		}
@@ -242,6 +291,11 @@ func (config *Config) validate(mode Mode) error {
 		}
 		if err := config.OIDC.validate(); err != nil {
 			return err
+		}
+		if config.Sessions != nil {
+			if err := config.Sessions.validate(); err != nil {
+				return err
+			}
 		}
 		if !validEnvironmentVariable(config.ClickHouse.DSNEnv) {
 			return errors.New("ClickHouse DSN environment variable name is invalid")

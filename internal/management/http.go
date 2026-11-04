@@ -164,13 +164,21 @@ func (server *server) readMe(response http.ResponseWriter, request *http.Request
 	if !ok {
 		return
 	}
+	var sessionExpiresAt *time.Time
+	if !principal.SessionExpiresAt.IsZero() {
+		sessionExpiresAt = &principal.SessionExpiresAt
+	}
 	writeJSON(response, struct {
-		Issuer               string         `json:"issuer"`
-		Subject              string         `json:"subject"`
-		Email                string         `json:"email"`
-		Role                 humanauth.Role `json:"role"`
-		WriteTokenMaxTTLDays int            `json:"write_token_max_ttl_days"`
-	}{principal.Issuer, principal.Subject, principal.Email, principal.Role, int(server.configs.WriteTokenLifetime() / (24 * time.Hour))})
+		Issuer                    string         `json:"issuer"`
+		Subject                   string         `json:"subject"`
+		Email                     string         `json:"email"`
+		Role                      humanauth.Role `json:"role"`
+		WriteTokenMaxTTLDays      int            `json:"write_token_max_ttl_days"`
+		SessionExpiresAt          *time.Time     `json:"session_expires_at,omitempty"`
+		SessionIdleTimeoutSeconds int            `json:"session_idle_timeout_seconds,omitempty"`
+		SessionLifetimeSeconds    int            `json:"session_lifetime_seconds,omitempty"`
+	}{principal.Issuer, principal.Subject, principal.Email, principal.Role, int(server.configs.WriteTokenLifetime() / (24 * time.Hour)),
+		sessionExpiresAt, int(principal.SessionIdleTimeout / time.Second), int(principal.SessionLifetime / time.Second)})
 }
 
 func (server *server) listEnvironments(response http.ResponseWriter, request *http.Request) {

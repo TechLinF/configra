@@ -1,6 +1,9 @@
 package humanauth
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type Role string
 
@@ -15,6 +18,10 @@ type Principal struct {
 	Email       string
 	Role        Role
 	MFAVerified bool
+	// Session limits for the browser; zero for non-session principals.
+	SessionExpiresAt   time.Time
+	SessionIdleTimeout time.Duration
+	SessionLifetime    time.Duration
 }
 
 func (principal Principal) ActorID() string {

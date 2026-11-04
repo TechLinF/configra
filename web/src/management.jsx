@@ -6,6 +6,9 @@ export async function request(path, options = {}) {
     ...options,
     headers: { Accept: 'application/json', ...options.headers },
   });
+  // The shell listens for these to recover an ended Session without losing the page (ADR-0035).
+  if (response.status === 401) window.dispatchEvent(new Event('configra:session-ended'));
+  else if (response.ok) window.dispatchEvent(new Event('configra:session-activity'));
   if (!response.ok) {
     const error = new Error(`request failed: ${response.status}`);
     error.status = response.status;
