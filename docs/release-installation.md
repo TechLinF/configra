@@ -60,8 +60,8 @@ build from the tagged source under your organization's software policy.
 
 ## Deployment checks
 
-v1.2.1 fixes Config copy and credential workflows with no schema change from v1.2.0;
-see the [patch upgrade](releases/v1.2.1.md). The v1.2.0 baseline adds `configractl`, consistent release sets and operational controls; follow
+v1.2.2 defaults UI lists to active resources and updates Go, Vite and the system CA
+bundle with no schema change from v1.2.1; see the [patch upgrade](releases/v1.2.2.md). The v1.2.0 baseline adds `configractl`, consistent release sets and operational controls; follow
 the [schema 3 → 4 upgrade](releases/v1.2.0.md) and [CLI guide](cli.md).
 
 v1.0.1 was the first stable release. v1.1.0 adds [scoped automation writes](scoped-write-tokens.md); follow the [schema 2 → 3 upgrade procedure](releases/v1.1.0.md) before starting API replicas. Review the documented security boundaries and
