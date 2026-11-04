@@ -82,11 +82,11 @@ export function InventoryPagination({ collection, t, onPageChange, hideSinglePag
 
 export function useMutation(request) {
   const attempt = useRef(null);
-  const mutate = (path, body) => {
-    const signature = JSON.stringify([path, body]);
+  const mutate = (path, body, method = 'POST') => {
+    const signature = JSON.stringify([method, path, body]);
     if (attempt.current?.signature !== signature) attempt.current = { signature, id: crypto.randomUUID() };
     const operationID = attempt.current.id;
-    return request(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationID }, ...(body ? { body: JSON.stringify(body) } : {}) })
+    return request(path, { method, headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationID }, ...(body ? { body: JSON.stringify(body) } : {}) })
       .catch(error => { error.operationID = operationID; throw error; });
   };
   return [mutate, () => { attempt.current = null; }];

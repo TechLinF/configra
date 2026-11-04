@@ -126,6 +126,11 @@ const messages = {
     next: 'Next',
     pagination: 'Config pagination',
     copy: 'Copy',
+    copyConfiguration: 'Config content',
+    resetToSource: 'Reset to source',
+    templateFromExisting: 'Template from existing config',
+    loadTemplate: 'Load template',
+    editedCopyNote: 'Edited content is saved as a new first version, not as a copy of the source revision.',
     copyReference: 'Copy reference',
     copyValue: 'Copy value',
     copyRequestID: 'Copy Request ID',
@@ -503,6 +508,11 @@ const messages = {
     next: '下一页',
     pagination: 'Config 分页',
     copy: '复制',
+    copyConfiguration: '配置内容',
+    resetToSource: '还原为源内容',
+    templateFromExisting: '从已有配置导入模板',
+    loadTemplate: '加载模板',
+    editedCopyNote: '编辑后的内容将作为新的首个版本保存，而不是源 Revision 的副本。',
     copyReference: '复制引用',
     copyValue: '复制值',
     copyRequestID: '复制 Request ID',
@@ -1381,6 +1391,8 @@ function Configs({ principal, filters = new URLSearchParams(), t }) {
   const [createFormat, setCreateFormat] = useState('yaml');
   const [createContent, setCreateContent] = useState('');
   const [createEnvironment, setCreateEnvironment] = useState('');
+  const [templateConfigKey, setTemplateConfigKey] = useState('');
+  const [templateEnvKey, setTemplateEnvKey] = useState('');
   const state = useInventory(`/v1/configs?${new URLSearchParams({ status: statusFilter, environment: environmentFilter, q: query, unbound: String(filters.get('unbound') === 'true') })}`, refresh, initialPage);
   const filterKey = filters.toString();
   useEffect(() => {
@@ -1425,6 +1437,31 @@ function Configs({ principal, filters = new URLSearchParams(), t }) {
         <label>{t.resourceKey}<input name="key" required maxLength="63" pattern="[a-z][a-z0-9_-]{0,62}" autoComplete="off" /></label>
         <label>{t.displayName}<input name="display_name" required maxLength="255" autoComplete="off" /></label>
         <label>{t.format}<select name="format" value={createFormat} onChange={event => setCreateFormat(event.target.value)}><option value="yaml">YAML</option><option value="json">JSON</option></select></label>
+        <div className="template-import-bar">
+          <label>{t.templateFromExisting}
+            <select value={templateConfigKey} onChange={event => {
+              const nextKey = event.target.value;
+              setTemplateConfigKey(nextKey);
+              setTemplateEnvKey(state.items.find(candidate => candidate.key === nextKey)?.environments?.[0]?.key || '');
+            }}>
+              <option value="">—</option>
+              {state.items.filter(item => item.environments?.length > 0).map(item => <option key={item.key} value={item.key}>{item.display_name} · {item.key}</option>)}
+            </select>
+          </label>
+          {templateConfigKey && <EnvironmentSelect label={`${t.templateFromExisting} · ${t.environment}`} value={templateEnvKey} scope={`&config=${encodeURIComponent(templateConfigKey)}`} onChange={setTemplateEnvKey} t={t} />}
+          {templateConfigKey && templateEnvKey && <button type="button" onClick={async event => {
+            const form = event.currentTarget.closest('form');
+            try {
+              const template = await request(`/v1/environments/${encodeURIComponent(templateEnvKey)}/configs/${encodeURIComponent(templateConfigKey)}`);
+              setCreateFormat(template.format);
+              setCreateContent(template.content);
+              const nameInput = form?.elements.namedItem('display_name');
+              if (nameInput && !nameInput.value) nameInput.value = template.config_name;
+            } catch (failure) {
+              setError(managementError(failure, t, t.loadFailed));
+            }
+          }}>{t.loadTemplate}</button>}
+        </div>
         <div className="form-source"><span>{t.configurationSource}</span><ConfigCodeEditor label={t.configurationSource} value={createContent} format={createFormat} readOnly={false} onChange={setCreateContent} /></div>
         <div className="form-actions"><ActionError error={error} t={t} /><button className="primary-action compact-action" type="submit" disabled={!createContent.trim()}>{t.createConfig}</button></div>
       </form>}
@@ -2540,7 +2577,7 @@ function ConfigDetail({ principal, configKey, environmentKey, t }) {
             inspection.status === 'loading' ? <div className="collection-state"><span className="loading-line" /></div>
               : inspection.status === 'failed' ? <p className="inline-error" role="alert">{t.operationFailed}</p>
                 : <section className="editor-panel">
-                  <div className="editor-toolbar"><span>{viewedFormat.toUpperCase()}</span><code>{t.revision} {viewedRevision}</code></div>
+                  <div className="editor-toolbar"><span>{viewedFormat.toUpperCase()}</span><code>{t.revision} {viewedRevision}</code><CopyValue value={viewedContent} label={t.copyConfiguration} t={t} /></div>
                   <ConfigCodeEditor label={viewingCurrent ? t.configurationSource : t.revisionLabel.replace('{revision}', viewedRevision)} value={viewedContent} format={viewedFormat} readOnly={!viewingCurrent || principal.role !== 'admin'} onChange={value => { setSource(value); setSaveError(null); setValidation({ status: 'idle', warnings: [] }); }} />
                   {principal.role === 'admin' && viewingCurrent && <div className="editor-actions">
                     <div className="editor-feedback" role="status">
@@ -2775,6 +2812,9 @@ function ConfigCopy({ path, config, newConfig, t }) {
   const [environment, setEnvironment] = useState('');
   const [state, setState] = useState({ status: 'idle' });
   const [mutate, resetMutation] = useMutation(request);
+  // Clone keeps the server-side clone so its globally-new-key check still applies; only Copy to environment may edit.
+  const [content, setContent] = useState(config.content);
+  const edited = !newConfig && content !== config.content;
   const submit = async event => {
     event.preventDefault();
     if (state.status === 'loading' || state.status === 'ready') return;
@@ -2782,7 +2822,10 @@ function ConfigCopy({ path, config, newConfig, t }) {
     const targetConfig = newConfig ? data.get('target_config') : config.config_key;
     setState({ status: 'loading' });
     try {
-      const result = await mutate(newConfig ? `${path}/clone` : `/v1/environments/${encodeURIComponent(environment)}/configs/${encodeURIComponent(targetConfig)}/replace`, newConfig
+      const result = edited
+        ? await mutate(`/v1/environments/${encodeURIComponent(environment)}/configs/${encodeURIComponent(targetConfig)}`,
+          { name: config.config_name, expected_revision: 0, format: config.format, content }, 'PUT')
+        : await mutate(newConfig ? `${path}/clone` : `/v1/environments/${encodeURIComponent(environment)}/configs/${encodeURIComponent(targetConfig)}/replace`, newConfig
         ? { target_environment: environment, target_config: targetConfig, target_name: data.get('target_name'), source_revision: config.revision }
         : { source_environment: config.environment_key, source_config: config.config_key, source_revision: config.revision, target_revision: 0, expected_target_revision: 0 });
       setState({ status: 'ready', result, environment, targetConfig });
@@ -2806,7 +2849,7 @@ function ConfigCopy({ path, config, newConfig, t }) {
         {newConfig && <><label>{t.targetConfig}<input name="target_config" required pattern="[a-z][a-z0-9_-]{0,62}" /></label>
           <label>{t.targetName}<input name="target_name" required maxLength="255" defaultValue={config.config_name} /></label></>}
         <div className="form-actions">
-          <button className="primary-action compact-action" type="submit" disabled={!environment || state.status === 'loading' || state.status === 'ready'}>{newConfig ? t.cloneConfig : t.copyFirstVersion.replace('{environment}', environment || '…')}</button>
+          <button className="primary-action compact-action" type="submit" disabled={!environment || !content.trim() || state.status === 'loading' || state.status === 'ready'}>{newConfig ? t.cloneConfig : t.copyFirstVersion.replace('{environment}', environment || '…')}</button>
         </div>
       </fieldset>
     </form>
@@ -2814,7 +2857,9 @@ function ConfigCopy({ path, config, newConfig, t }) {
     {state.status === 'ready' && <p className="success-note" role="status">{t.copyComplete.replace('{target}', `${state.environment}/${state.targetConfig}`).replace('{revision}', state.result.revision)}</p>}
     {(state.status === 'ready' || state.reason === 'target_config_exists') && <p><a href={`#/configs/${encodeURIComponent(state.targetConfig)}/${encodeURIComponent(state.environment)}`}>{t.openTargetConfig}</a></p>}
     {state.result?.warnings?.length > 0 && <div className="config-warning-list" role="status"><ConfigWarningLines warnings={state.result.warnings} t={t} /></div>}
-    <ConfigCodeEditor label={t.source} readOnly value={config.content} format={config.format} />
+    <div className="editor-toolbar"><span>{config.format.toUpperCase()}</span><CopyValue value={content} label={t.copyConfiguration} t={t} />{edited && <button type="button" onClick={() => { setContent(config.content); change(); }}>{t.resetToSource}</button>}</div>
+    {edited && <p className="muted-note" role="status">{t.editedCopyNote}</p>}
+    <ConfigCodeEditor label={t.source} readOnly={newConfig} value={content} format={config.format} onChange={value => { setContent(value); change(); }} />
   </section>;
 }
 

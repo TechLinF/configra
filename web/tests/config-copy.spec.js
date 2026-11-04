@@ -175,3 +175,40 @@ test('restore waits for the complete snapshot before allowing a copy of its new 
   await expect(page.getByLabel('Source', { exact: true })).toContainText('restored: true');
   await expect(page.getByLabel('Source', { exact: true })).not.toContainText('old: true');
 });
+
+test('config detail copies its raw content', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await sourcePage(page);
+  await page.getByRole('button', { name: 'Copy Config content', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("port: 6380\npassword: '{vault.app.db.password}'\n");
+});
+
+test('an edited copy commits a first version and retries with the same operation ID', async ({ page }) => {
+  await sourcePage(page);
+  const attempts = [];
+  await page.route('**/v1/environments/production/configs/server', async route => {
+    if (route.request().method() !== 'PUT') return route.fallback();
+    attempts.push({ body: route.request().postDataJSON(), id: route.request().headers()['idempotency-key'] });
+    if (attempts.length === 1) return route.fulfill({ status: 503, json: { error: { code: 'service_unavailable', request_id: 'req-lost' } } });
+    return route.fulfill({ json: { outcome: 'success', revision: 1 } });
+  });
+  await page.getByRole('button', { name: 'Copy to environment', exact: true }).click();
+  await page.getByLabel('Target environment', { exact: true }).selectOption('production');
+  await page.getByLabel('Source', { exact: true }).click();
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.type('port: 7380\n');
+  await expect(page.getByText('Edited content is saved as a new first version')).toBeVisible();
+  await page.getByRole('button', { name: 'Create first version in production' }).click();
+  await expect(page.getByRole('alert')).toContainText('req-lost');
+  await page.getByRole('button', { name: 'Create first version in production' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Copied to production/server · v1' })).toBeVisible();
+  expect(attempts).toHaveLength(2);
+  expect(attempts[0].body).toEqual({ name: 'Server', expected_revision: 0, format: 'yaml', content: 'port: 7380\n' });
+  expect(attempts[1].id).toBe(attempts[0].id);
+});
+
+test('clone keeps the saved source read-only so the server-side clone checks still apply', async ({ page }) => {
+  await sourcePage(page);
+  await openClone(page);
+  await expect(page.getByLabel('Source', { exact: true })).toHaveAttribute('aria-readonly', 'true');
+});

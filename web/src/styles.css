@@ -439,6 +439,9 @@ td time { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .tabbar button { border: 0; border-bottom: 2px solid transparent; padding: 11px 18px; background: transparent; color: var(--muted); cursor: pointer; font-weight: 700; }
 .tabbar button[aria-selected="true"] { border-bottom-color: var(--blue); color: var(--blue); }
 .editor-panel { overflow: hidden; margin-top: 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.template-import-bar { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(200px, 1fr) auto; align-items: end; gap: 12px; }
+.template-import-bar > button { min-height: 38px; border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 14px; background: var(--surface); color: var(--blue); cursor: pointer; font-weight: 700; }
+@media (max-width: 760px) { .template-import-bar { grid-template-columns: 1fr; } }
 .editor-toolbar { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); padding: 10px 14px; background: var(--surface-muted); }
 .editor-toolbar span, .editor-toolbar code { color: var(--muted); font: 700 11px ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .source-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
