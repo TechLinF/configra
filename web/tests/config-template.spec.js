@@ -68,7 +68,8 @@ test('creating a Config retries a lost response with the same operation ID', asy
     return route.fulfill({ json: { outcome: 'success', revision: 1 } });
   });
   await page.getByRole('button', { name: 'New config' }).click();
-  await page.getByRole('combobox', { name: 'Environment', exact: true }).selectOption('production');
+  await page.getByRole('combobox', { name: 'Environment', exact: true }).click();
+  await page.getByRole('option', { name: 'Production · production', exact: true }).click();
   await page.getByLabel('Resource key').fill('payment');
   await page.getByLabel('Display name').fill('Payment service');
   await page.getByLabel('Configuration source').fill('port: 6379\n');

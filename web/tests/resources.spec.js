@@ -269,6 +269,23 @@ test('off-page identities and Config environments remain searchable and directly
   expect(requests.some(url => url.pathname === '/v1/configs' && url.searchParams.get('key') === 'service_104')).toBe(true);
   expect(requests.some(url => url.searchParams.get('config') === 'service_104' && url.searchParams.get('offset') === '50')).toBe(true);
   expect(requests.some(url => url.searchParams.get('config') === 'service_104' && url.searchParams.get('q') === 'env_104' && url.searchParams.get('offset') === '0')).toBe(true);
+
+  await page.goto('/ui/#/configs');
+  const envFilter = page.getByRole('combobox', { name: 'Environment filter', exact: true });
+  await envFilter.click();
+  const envMenu = page.locator('.environment-combobox-menu');
+  await expect(envMenu.getByRole('option', { name: 'Environment 0 · env_000', exact: true })).toBeVisible();
+  await envMenu.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(envMenu.getByRole('option', { name: 'Environment 50 · env_050', exact: true })).toBeVisible();
+  await envFilter.fill('env_104');
+  await expect(page.getByRole('option', { name: 'Environment 104 · env_104', exact: true })).toBeVisible();
+  await envFilter.press('Enter');
+  await expect(envFilter).toHaveValue('env_104');
+  await expect(page).toHaveURL(/#\/configs\?environment=env_104$/);
+  await envFilter.click();
+  await page.getByRole('option', { name: 'All environments', exact: true }).click();
+  await expect(envFilter).toHaveValue('');
+  await expect(page).toHaveURL(/#\/configs$/);
 });
 
 test('administrator creates, archives, and restores a Config identity', async ({ page }) => {
@@ -304,7 +321,8 @@ test('administrator creates, archives, and restores a Config identity', async ({
 
   await page.getByRole('button', { name: 'New config' }).click();
   if (process.env.CONFIGRA_CONFIG_CREATE_SCREENSHOT) await page.screenshot({ path: process.env.CONFIGRA_CONFIG_CREATE_SCREENSHOT, fullPage: true });
-  await page.getByRole('combobox', { name: 'Environment', exact: true }).selectOption('production');
+  await page.getByRole('combobox', { name: 'Environment', exact: true }).click();
+  await page.getByRole('option', { name: 'Production · production', exact: true }).click();
   await page.getByLabel('Resource key').fill('payment');
   await page.getByLabel('Display name').fill('Payment service');
   await page.getByLabel('Format').selectOption('yaml');
@@ -585,7 +603,8 @@ test('administrator compares, restores, and clones an immutable Config Revision'
 
   await page.locator('summary[aria-label="More actions"]').click();
   await page.getByRole('button', { name: 'Clone', exact: true }).click();
-  await page.getByLabel('Target environment', { exact: true }).selectOption('recovery');
+  await page.getByLabel('Target environment', { exact: true }).click();
+  await page.getByRole('option', { name: 'Recovery · recovery', exact: true }).click();
   await page.getByLabel('Target config').fill('payment_recovery');
   await page.getByLabel('Target name').fill('Recovery payment');
   await page.getByRole('button', { name: 'Clone config' }).click();
@@ -644,11 +663,13 @@ test('viewer compares paged Config revisions across peer Environments and keeps 
   await expect(page.getByTestId('compare-source-slot')).toContainText('recovery/payment@v7');
   await expect(lanes.last().getByRole('navigation')).toContainText('Page 1');
   // Environment changes reset only that lane; old selections remain explicit.
-  await page.getByLabel('Environment A', { exact: true }).selectOption('recovery');
+  await page.getByLabel('Environment A', { exact: true }).click();
+  await page.getByRole('option', { name: 'Recovery · recovery', exact: true }).click();
   await expect(lanes.first().getByRole('navigation')).toContainText('Page 1');
   await expect(lanes.first().getByTestId('revision-recovery-57')).toBeVisible();
   await expect(page.getByTestId('compare-target-slot')).toContainText('production/payment@v3');
-  await page.getByLabel('Environment A', { exact: true }).selectOption('production');
+  await page.getByLabel('Environment A', { exact: true }).click();
+  await page.getByRole('option', { name: 'Production · production', exact: true }).click();
   await expect(lanes.first().getByRole('navigation')).toContainText('Page 1');
   await expect(lanes.first().getByTestId('revision-production-53')).toBeVisible();
 });

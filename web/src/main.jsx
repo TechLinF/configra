@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import React, { lazy, Suspense, useDeferredValue, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AuthorityManagement, CertificateManagement, authorityLabel } from './security/Certificates.jsx';
 import { Sessions, sessionLabel } from './security/Sessions.jsx';
@@ -939,19 +939,124 @@ function RevisionPagination({ history, t }) {
 
 
 function EnvironmentSelect({ label, value, onChange, name, required = false, scope = '', includeArchived = false, emptyLabel, unavailable, unavailableLabel, t }) {
-  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const rootRef = useRef(null);
+  const listID = useId();
+  const search = query ?? '';
   const collection = useInventory(`/v1/environments?include_archived=${includeArchived}&q=${encodeURIComponent(search)}${scope}`);
-  return <div className="environment-select">
-    <label><span>{label}</span><select aria-label={label} name={name} required={required} value={value} onChange={event => onChange(event.target.value)}>
-      <option value="">{emptyLabel || t.environment}</option>
-      {value && !collection.items.some(item => item.key === value) && <option value={value}>{value}</option>}
-      {collection.items.map(item => {
-        const taken = unavailable?.has(item.key) && item.key !== value;
-        return <option key={item.key} value={item.key} disabled={taken}>{item.display_name} · {item.key}{taken ? ` · ${unavailableLabel}` : ''}</option>;
-      })}
-    </select></label>
-    <input type="search" aria-label={`${label} · ${t.search}`} placeholder={t.search} value={search} onChange={event => setSearch(event.target.value)} />
-    <InventoryPagination collection={collection} t={t} hideSinglePage />
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeOnOutsideClick = event => {
+      if (!rootRef.current?.contains(event.target)) {
+        setOpen(false);
+        setQuery(null);
+      }
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+  }, [open]);
+  const options = [];
+  if (emptyLabel && !search.trim()) options.push({ key: '', text: emptyLabel, isEmpty: true, disabled: false });
+  if (value && !search.trim() && !collection.items.some(item => item.key === value)) {
+    options.push({ key: value, displayName: value, disabled: false });
+  }
+  for (const item of collection.items) {
+    const taken = Boolean(unavailable?.has(item.key) && item.key !== value);
+    options.push({ key: item.key, displayName: item.display_name, taken, disabled: taken });
+  }
+  const safeActiveIndex = options[activeIndex] && !options[activeIndex].disabled
+    ? activeIndex
+    : options.findIndex(option => !option.disabled);
+  const selectValue = nextValue => {
+    setQuery(null);
+    setOpen(false);
+    if (nextValue !== value) onChange(nextValue);
+  };
+  const stepOption = direction => {
+    if (!options.some(option => !option.disabled)) return;
+    let index = safeActiveIndex < 0 ? (direction > 0 ? -1 : options.length) : safeActiveIndex;
+    for (let count = 0; count < options.length; count += 1) {
+      index = (index + direction + options.length) % options.length;
+      if (!options[index].disabled) {
+        setActiveIndex(index);
+        return;
+      }
+    }
+  };
+  return <div className="environment-select environment-combobox" ref={rootRef} onBlur={event => {
+    if (event.relatedTarget && !rootRef.current?.contains(event.relatedTarget)) {
+      setOpen(false);
+      setQuery(null);
+    }
+  }}>
+    {name && <input type="hidden" name={name} value={value} />}
+    <label><span>{label}</span>
+      <input
+        type="text"
+        role="combobox"
+        aria-label={label}
+        aria-autocomplete="list"
+        aria-expanded={open}
+        aria-controls={open ? listID : undefined}
+        aria-activedescendant={open && safeActiveIndex >= 0 ? `${listID}-${safeActiveIndex}` : undefined}
+        autoComplete="off"
+        required={required}
+        placeholder={emptyLabel || t.environment}
+        value={query ?? value}
+        onFocus={event => { setOpen(true); event.currentTarget.select?.(); }}
+        onClick={() => setOpen(true)}
+        onChange={event => {
+          const next = event.target.value;
+          setQuery(next);
+          setOpen(true);
+          setActiveIndex(0);
+          if (!required && next === '' && value !== '') onChange('');
+        }}
+        onKeyDown={event => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            if (!open) setOpen(true);
+            else stepOption(1);
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            if (!open) setOpen(true);
+            else stepOption(-1);
+          } else if (event.key === 'Enter' && open) {
+            event.preventDefault();
+            const candidate = options[safeActiveIndex];
+            if (candidate && !candidate.disabled) selectValue(candidate.key);
+          } else if (event.key === 'Escape' && (open || query !== null)) {
+            event.preventDefault();
+            setOpen(false);
+            setQuery(null);
+          }
+        }}
+      />
+    </label>
+    {open && <div className="environment-combobox-menu" onMouseDown={event => event.preventDefault()}>
+      <div role="listbox" id={listID} aria-label={label} className="environment-combobox-options">
+        {options.map((option, index) => (
+          <button
+            key={option.isEmpty ? '__empty__' : option.key}
+            id={`${listID}-${index}`}
+            type="button"
+            role="option"
+            aria-selected={option.key === value}
+            disabled={option.disabled}
+            className={`environment-combobox-option${index === safeActiveIndex ? ' active' : ''}`}
+            onMouseEnter={() => { if (!option.disabled) setActiveIndex(index); }}
+            onClick={() => { if (!option.disabled) selectValue(option.key); }}
+          >
+            {option.isEmpty ? <span>{option.text}</span> : <><span>{option.displayName}</span> · <code>{option.key}</code>{option.taken && <small>{` · ${unavailableLabel}`}</small>}</>}
+          </button>
+        ))}
+        {collection.status === 'loading' && <div className="environment-combobox-state" role="status" aria-busy="true"><span className="loading-line" /></div>}
+        {collection.status === 'ready' && options.length === 0 && <p className="environment-combobox-empty">{t.noResources}</p>}
+      </div>
+      <InventoryPagination collection={collection} t={t} hideSinglePage />
+    </div>}
   </div>;
 }
 

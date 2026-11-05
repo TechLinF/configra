@@ -31,7 +31,8 @@ test('an ended session keeps the page and recovers after signing in from another
   });
   await page.goto('/ui/#/configs');
   await page.getByRole('button', { name: 'New config' }).click();
-  await page.getByRole('combobox', { name: 'Environment', exact: true }).selectOption('production');
+  await page.getByRole('combobox', { name: 'Environment', exact: true }).click();
+  await page.getByRole('option', { name: 'Production · production', exact: true }).click();
   await page.getByLabel('Resource key').fill('payment');
   await page.getByLabel('Display name').fill('Payment service');
   await page.getByLabel('Configuration source').fill('port: 6379\n');
