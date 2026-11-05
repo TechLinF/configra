@@ -722,8 +722,12 @@ td time { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .form-actions { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; }
 .row-subkey { display: block; margin-top: 4px; color: var(--muted) !important; font-size: 10px !important; }
 .grant-form { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 18px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 7px; padding: 14px 16px; background: var(--surface); }
-.row-actions { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.row-actions { display: flex; align-items: center; gap: 2px; white-space: nowrap; }
 .row-actions button:not(.danger-link) { border: 0; background: transparent; color: var(--blue); cursor: pointer; font-size: 12px; font-weight: 700; }
+/* Row actions are text buttons: give each a 30px target and hover feedback without adding chrome at rest. */
+.row-actions button, .config-index-table td:last-child > button, .vault-index-table td:last-child > button { min-height: 30px; border-radius: 4px; padding: 4px 6px; }
+.row-actions button:not(.danger-link):hover, .config-index-table td:last-child > button:not(.danger-link):hover, .vault-index-table td:last-child > button:not(.danger-link):hover { background: var(--blue-soft); }
+.row-actions .danger-link:hover, .config-index-table td:last-child > .danger-link:hover, .vault-index-table td:last-child > .danger-link:hover { background: var(--danger-soft); }
 .certificate-form { display: grid; gap: 15px; margin-bottom: 16px; border: 1px solid var(--amber-line); border-radius: 7px; padding: 20px; background: var(--amber-soft); }
 .certificate-form > p { margin: 0; color: var(--amber-ink); font-size: 13px; font-weight: 700; }
 .certificate-form > label { display: grid; gap: 6px; font-size: 12px; font-weight: 700; }
@@ -854,13 +858,13 @@ td time { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .notifications-page > .table-frame td:first-child strong, .notifications-page > .table-frame td:nth-child(3) strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .notifications-page > .table-frame td:last-child { white-space: nowrap; }
 .tokens-panel table, .certificates-panel table { min-width: 1080px; table-layout: fixed; }
-.tokens-panel th:nth-child(1) { width: 23%; }
+.tokens-panel th:nth-child(1) { width: 21%; }
 .tokens-panel th:nth-child(2) { width: 11%; }
 .tokens-panel th:nth-child(3) { width: 14%; }
 .tokens-panel th:nth-child(4) { width: 10%; }
 .tokens-panel th:nth-child(5) { width: 12%; }
 .tokens-panel th:nth-child(6) { width: 10%; }
-.tokens-panel th:nth-child(7) { width: 20%; }
+.tokens-panel th:nth-child(7) { width: 22%; }
 .tokens-panel td:nth-child(6) .status { white-space: nowrap; }
 .token-form .form-actions > button:not(.primary-action) { margin-left: auto; min-height: 34px; border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 14px; background: var(--surface); color: var(--ink); cursor: pointer; font-weight: 700; }
 .token-form .form-actions > button:not(.primary-action) + .primary-action { margin-left: 10px; }
