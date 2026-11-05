@@ -160,7 +160,8 @@ test('full CA identifiers fit a narrow screen and tabs scroll within their own s
 test('returning to the page refreshes a Token that expired while the page was idle', async ({ page }) => {
   await workspace(page, { tokens: [{ ...token, expires_at: '2026-10-15T00:01:00Z' }] });
   const row = page.getByRole('row', { name: /old-operator/ });
-  await expect(row.locator('.status')).toHaveText('Active');
+  // One minute left: inside the 14-day notice window, not yet expired.
+  await expect(row.locator('.status')).toHaveText('Expires soon');
   await page.clock.setFixedTime(new Date('2026-10-15T00:02:00Z'));
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await expect(row.locator('.status')).toHaveText('Expired');

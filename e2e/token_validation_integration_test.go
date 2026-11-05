@@ -73,7 +73,7 @@ func TestTokenValidationHTTPPreservesSafeReasonsOnReplay(t *testing.T) {
 			}
 		})
 	}
-	tokens, err := store.ListTokens(ctx, mysqlstore.InventoryQuery{Limit: 50})
+	tokens, err := store.ListTokens(ctx, mysqlstore.TokenQuery{InventoryQuery: mysqlstore.InventoryQuery{Limit: 50}})
 	if err != nil || tokens.Total != 0 {
 		t.Fatal("rejected request created a credential", err)
 	}

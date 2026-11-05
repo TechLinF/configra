@@ -1149,6 +1149,7 @@ type recordingConfigWriter struct {
 	tokenEnvironmentChanges        []mysqlstore.TokenEnvironmentChange
 	tokenEnvironmentResult         mysqlstore.TokenEnvironmentResult
 	tokenRevokes                   []mysqlstore.TokenRevoke
+	tokenQueries                   []mysqlstore.TokenQuery
 	tokenRevokeResult              mysqlstore.TokenRevokeResult
 	certificates                   []mysqlstore.ClientCertificate
 	certificateLists               []bool
@@ -1299,8 +1300,9 @@ func (writer *recordingConfigWriter) ApplyVaultLifecycleChange(_ context.Context
 	return writer.vaultLifecycleResult, nil
 }
 
-func (writer *recordingConfigWriter) ListTokens(_ context.Context, query mysqlstore.InventoryQuery) (mysqlstore.InventoryPage[mysqlstore.TokenSummary], error) {
-	writer.inventoryQueries = append(writer.inventoryQueries, query)
+func (writer *recordingConfigWriter) ListTokens(_ context.Context, query mysqlstore.TokenQuery) (mysqlstore.InventoryPage[mysqlstore.TokenSummary], error) {
+	writer.inventoryQueries = append(writer.inventoryQueries, query.InventoryQuery)
+	writer.tokenQueries = append(writer.tokenQueries, query)
 	writer.tokenLists = append(writer.tokenLists, query.IncludeInactive)
 	return mysqlstore.InventoryPage[mysqlstore.TokenSummary]{Items: writer.tokens, Total: uint64(len(writer.tokens))}, nil
 }
@@ -1429,3 +1431,28 @@ func (writer *recordingConfigWriter) RecordRejectedMutation(_ context.Context, r
 }
 
 func (writer *recordingConfigWriter) WriteTokenLifetime() time.Duration { return 90 * 24 * time.Hour }
+
+func TestTokenListAcceptsAnExpiryWindow(t *testing.T) {
+	repository := &recordingConfigWriter{}
+	handler := management.NewHandler(repository, nil, nil)
+	admin := humanauth.Principal{Subject: "admin-1", Role: humanauth.RoleAdmin}
+	list := func(query string) *httptest.ResponseRecorder {
+		input := httptest.NewRequest(http.MethodGet, "https://configra.test/v1/api-tokens"+query, nil)
+		input = input.WithContext(humanauth.WithPrincipal(input.Context(), admin))
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, input)
+		return response
+	}
+	if response := list("?status=active&expiring_within_days=14"); response.Code != http.StatusOK || len(repository.tokenQueries) != 1 ||
+		repository.tokenQueries[0].ExpiringWithinDays != 14 || repository.tokenQueries[0].IncludeInactive {
+		t.Fatalf("expiring Token list = %d %q; queries %#v", response.Code, response.Body.String(), repository.tokenQueries)
+	}
+	for _, query := range []string{"?expiring_within_days=0", "?expiring_within_days=366", "?expiring_within_days=soon", "?expiring_within_days=7&expiring_within_days=8"} {
+		if response := list(query); response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "invalid_request") {
+			t.Fatalf("%s = %d %q", query, response.Code, response.Body.String())
+		}
+	}
+	if len(repository.tokenQueries) != 1 {
+		t.Fatalf("rejected windows reached the store: %#v", repository.tokenQueries)
+	}
+}

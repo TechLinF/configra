@@ -24,12 +24,25 @@ type TokenSummary struct {
 	CreatedAt              time.Time  `json:"created_at"`
 }
 
-func (store *Store) ListTokens(ctx context.Context, query InventoryQuery) (InventoryPage[TokenSummary], error) {
+// TokenQuery narrows the API Token inventory. ExpiringWithinDays keeps Tokens
+// whose expiry falls within that many days, including ones already expired.
+type TokenQuery struct {
+	InventoryQuery
+	ExpiringWithinDays int
+}
+
+const MaxTokenExpiryWindowDays = 365
+
+func (store *Store) ListTokens(ctx context.Context, query TokenQuery) (InventoryPage[TokenSummary], error) {
 	page := InventoryPage[TokenSummary]{Items: make([]TokenSummary, 0)}
-	if !query.valid() {
+	if !query.valid() || query.ExpiringWithinDays < 0 || query.ExpiringWithinDays > MaxTokenExpiryWindowDays {
 		return page, ErrValidation
 	}
 	where, arguments := query.filter("token.public_id", "token.revoked_at", "token.public_id", "token.display_name", "token.display_prefix")
+	if query.ExpiringWithinDays > 0 {
+		where += " AND token.expires_at IS NOT NULL AND token.expires_at <= UTC_TIMESTAMP(6) + INTERVAL ? DAY"
+		arguments = append(arguments, query.ExpiringWithinDays)
+	}
 	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM api_tokens AS token WHERE `+where, arguments...).Scan(&page.Total); err != nil {
 		return page, fmt.Errorf("count API Tokens: %w", err)
 	}

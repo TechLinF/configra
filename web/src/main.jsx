@@ -253,6 +253,24 @@ const messages = {
     registerCertificate: 'Register certificate',
     revoke: 'Revoke',
     revoked: 'Revoked',
+    replaceToken: 'Replace',
+    replaceTitle: 'Replace {name}',
+    replaceExplanation: 'This creates a new Token with the same access. {name} keeps working until you revoke it, so its consumers can move over first.',
+    replaceScopesFixed: 'A replacement keeps the same Environments and scopes. Create a new Token to change them.',
+    replaceLoadingGrants: 'Loading the current Environments…',
+    finishReplacement: 'Finish replacing {name}',
+    replacementStepDeploy: 'Give the new Token to every consumer of {name}, for example its Kubernetes Secret, and check that they read with it.',
+    replacementStepRevoke: 'Then revoke {name}. The Access page lists recent reads by Token ID.',
+    replacementCascade: 'Revoking a write-scoped Token also revokes every deployment credential it issued. Issue new ones with configractl using the new Token.',
+    revokeOldToken: 'Revoke {name}',
+    confirmRevokeOld: 'Confirm revoke {name}',
+    oldTokenRevoked: '{name} was revoked.',
+    tokenExpired: 'Expired',
+    expiringSoon: 'Expires soon',
+    statusExpiring: 'Expiring within {days} days',
+    expiringTokens: 'API Tokens expiring soon',
+    expiringTokensEmpty: 'No API Token expires within {days} days.',
+    viewAllExpiring: 'View all {count}',
     tokenOnlyAllowed: 'Token-only allowed',
     tokenName: 'Token name',
     targetConfig: 'Target config',
@@ -647,6 +665,24 @@ const messages = {
     registerCertificate: '登记证书',
     revoke: '吊销',
     revoked: '已吊销',
+    replaceToken: '替换',
+    replaceTitle: '替换 {name}',
+    replaceExplanation: '将创建一个权限相同的新 Token。在您吊销之前，{name} 仍然有效，可先让使用方切换到新 Token。',
+    replaceScopesFixed: '替换会保留相同的 Environment 与范围；如需更改，请新建 Token。',
+    replaceLoadingGrants: '正在读取当前的 Environment…',
+    finishReplacement: '完成替换 {name}',
+    replacementStepDeploy: '将新 Token 下发给 {name} 的所有使用方（例如其 Kubernetes Secret），并确认它们已使用新 Token 读取。',
+    replacementStepRevoke: '随后吊销 {name}。访问记录页面可按 Token ID 查看最近的读取。',
+    replacementCascade: '吊销写入范围 Token 会同时吊销其签发的所有部署凭据。请使用新 Token 通过 configractl 重新签发。',
+    revokeOldToken: '吊销 {name}',
+    confirmRevokeOld: '确认吊销 {name}',
+    oldTokenRevoked: '{name} 已吊销。',
+    tokenExpired: '已过期',
+    expiringSoon: '即将过期',
+    statusExpiring: '{days} 天内过期',
+    expiringTokens: '即将过期的 API Token',
+    expiringTokensEmpty: '{days} 天内没有将过期的 API Token。',
+    viewAllExpiring: '查看全部 {count} 个',
     tokenOnlyAllowed: '允许仅 Token',
     tokenName: 'Token 名称',
     targetConfig: '目标 Config',
@@ -1179,7 +1215,7 @@ function Shell({ principal, language, setLanguage, theme, setTheme, t }) {
             <form action="/auth/logout" method="post"><button className="logout-button" type="submit">{t.signOut}</button></form>
           </div>
         </header>
-        {route === 'overview' && <Overview inventory={inventory} t={t} />}
+        {route === 'overview' && <Overview inventory={inventory} principal={principal} t={t} />}
         {route === 'environments' && currentRoute.segments.length >= 2
           ? <EnvironmentDetail environmentKey={currentRoute.segments[1]} t={t} />
           : route === 'environments' && <Environments principal={principal} t={t} />}
@@ -1191,7 +1227,7 @@ function Shell({ principal, language, setLanguage, theme, setTheme, t }) {
         {route === 'vault' && currentRoute.segments.length >= 3
           ? <div className="resource-explorer"><ResourceRail refresh={inventoryRevision} section="vault" selected={`${currentRoute.segments[1]}/${currentRoute.segments[2]}`} t={t} /><div className="resource-explorer-detail"><VaultDetail key={`${currentRoute.segments[1]}/${currentRoute.segments[2]}`} principal={principal} namespaceKey={currentRoute.segments[1]} itemKey={currentRoute.segments[2]} t={t} /></div></div>
           : route === 'vault' && <VaultItems principal={principal} filters={currentRoute.query} t={t} />}
-        {route === 'administration' && principal.role === 'admin' && <Administration t={t} principal={principal} />}
+        {route === 'administration' && principal.role === 'admin' && <Administration t={t} principal={principal} filters={currentRoute.query} />}
         {route === 'notifications' && principal.role === 'admin' && <Notifications t={t} />}
         {principal.role !== 'admin' && ['administration', 'notifications'].includes(route) && <Forbidden t={t} />}
         {route === 'access' && <AccessPage t={t} />}
@@ -1220,7 +1256,24 @@ function ResourceRail({ section, selected, refresh, t }) {
   </aside>;
 }
 
-function Overview({ inventory, t }) {
+function ExpiringTokens({ t }) {
+  const now = useCurrentTime();
+  const tokens = useInventory(`/v1/api-tokens?${new URLSearchParams({ status: 'active', expiring_within_days: String(TOKEN_EXPIRY_NOTICE_DAYS) })}`);
+  const soonest = [...tokens.items].sort((a, b) => Date.parse(a.expires_at) - Date.parse(b.expires_at)).slice(0, 5);
+  return <section className="panel overview-expiring" aria-labelledby="expiring-tokens-title">
+    <div className="section-heading"><h2 id="expiring-tokens-title">{t.expiringTokens}</h2>
+      {tokens.status === 'ready' && tokens.total > 0 && <a href="#/administration?tokens=expiring">{t.viewAllExpiring.replace('{count}', tokens.total)}</a>}</div>
+    {tokens.status === 'loading' && <p className="overview-empty">…</p>}
+    {tokens.status === 'failed' && <p className="overview-empty health-bad">{t.unavailable}</p>}
+    {tokens.status === 'ready' && tokens.total === 0 && <p className="overview-empty">{t.expiringTokensEmpty.replace('{days}', TOKEN_EXPIRY_NOTICE_DAYS)}</p>}
+    {soonest.length > 0 && <ul className="expiring-token-list">{soonest.map(token => <li key={token.public_id}>
+      <div><strong title={token.display_name}>{token.display_name}</strong><Expiration value={token.expires_at} now={now} t={t} /></div>
+      <a href={`#/administration?${new URLSearchParams({ replace: token.public_id })}`} aria-label={`${t.replaceToken} ${token.display_name}`}>{t.replaceToken}</a>
+    </li>)}</ul>}
+  </section>;
+}
+
+function Overview({ inventory, principal, t }) {
   const [operations, setOperations] = useState({ audit: 'loading', audits: [], ready: null });
   useEffect(() => {
     let live = true;
@@ -1271,6 +1324,7 @@ function Overview({ inventory, t }) {
           </section>
         </div>
         <aside className="overview-side">
+          {principal?.role === 'admin' && <ExpiringTokens t={t} />}
           <section className="panel overview-inventory">
             <div className="section-heading"><h2>{t.inventory}</h2></div>
             <nav aria-label={t.inventory}><a href="#/environments"><span>{t.environments}</span><strong>{inventory.status === 'ready' ? inventory.environments : '—'}</strong></a><a href="#/configs"><span>{t.configs}</span><strong>{inventory.status === 'ready' ? inventory.configs : '—'}</strong></a><a href="#/vault"><span>{t.vault}</span><strong>{inventory.status === 'ready' ? inventory.vault : '—'}</strong></a></nav>
@@ -2138,7 +2192,7 @@ function downloadFile(file) {
   } catch {}
 }
 
-function Administration({ t, principal }) {
+function Administration({ t, principal, filters = new URLSearchParams() }) {
   const [tab, setTab] = useState('tokens');
   return (
     <div className="page administration-page">
@@ -2151,12 +2205,64 @@ function Administration({ t, principal }) {
         <button type="button" role="tab" aria-selected={tab === 'notifications'} onClick={() => setTab('notifications')}>{t.notifications}</button>
         <button type="button" role="tab" aria-selected={tab === 'deployment'} onClick={() => setTab('deployment')}>{t.deploymentStatus}</button>
       </div>
-      {tab === 'tokens' ? <TokensPanel t={t} principal={principal} /> : tab === 'certificates' ? <CertificateManagement t={t} onAuthorities={() => setTab('authorities')} /> : tab === 'authorities' ? <AuthorityManagement t={t} onCertificates={() => setTab('certificates')} /> : tab === 'sessions' ? <Sessions t={t} principal={principal} /> : tab === 'notifications' ? <Notifications t={t} embedded /> : <DeploymentPanel t={t} />}
+      {tab === 'tokens' ? <TokensPanel t={t} principal={principal} filters={filters} /> : tab === 'certificates' ? <CertificateManagement t={t} onAuthorities={() => setTab('authorities')} /> : tab === 'authorities' ? <AuthorityManagement t={t} onCertificates={() => setTab('certificates')} /> : tab === 'sessions' ? <Sessions t={t} principal={principal} /> : tab === 'notifications' ? <Notifications t={t} embedded /> : <DeploymentPanel t={t} />}
     </div>
   );
 }
 
-function TokensPanel({ t, principal }) {
+const TOKEN_EXPIRY_NOTICE_DAYS = 14;
+const DAY_MS = 86400000;
+
+function tokenStatus(token, now, t) {
+  if (token.revoked) return { label: t.revoked, className: 'status archived' };
+  const remaining = token.expires_at ? Date.parse(token.expires_at) - now : Infinity;
+  if (remaining <= 0) return { label: t.tokenExpired, className: 'status archived' };
+  if (remaining <= TOKEN_EXPIRY_NOTICE_DAYS * DAY_MS) return { label: t.expiringSoon, className: 'status warning' };
+  return { label: t.statusActive, className: 'status active' };
+}
+
+// The Token list previews at most three Environments; a replacement needs the complete active grant set.
+async function grantedEnvironments(publicID) {
+  const keys = [];
+  for (let offset = 0; ; offset += 100) {
+    const page = await request(`/v1/environments?${new URLSearchParams({ token: publicID, limit: '100', offset: String(offset) })}`);
+    keys.push(...page.items.filter(item => item.granted).map(item => item.key));
+    if (!page.items.length || offset + page.items.length >= page.total) return keys;
+  }
+}
+
+// Rotation is create-overlap-revoke (ADR-0019): the previous Token keeps working until it is revoked here.
+function ReplacementSteps({ previous, onRevoked, t }) {
+  const [step, setStep] = useState({ status: 'idle' });
+  const [mutate] = useMutation(request);
+  const name = `${previous.display_name} · ${previous.display_prefix}`;
+  const revoke = async () => {
+    setStep({ status: 'revoking' });
+    try {
+      await mutate(`/v1/api-tokens/${encodeURIComponent(previous.public_id)}/revoke`);
+      setStep({ status: 'revoked' });
+      onRevoked();
+    } catch (failure) {
+      setStep({ status: 'failed', error: managementError(failure, t, t.operationFailed) });
+    }
+  };
+  return <section className="replacement-steps" aria-labelledby="replacement-steps-title">
+    <h3 id="replacement-steps-title">{t.finishReplacement.replace('{name}', name)}</h3>
+    <ol>
+      <li>{t.replacementStepDeploy.replace('{name}', name)}</li>
+      <li>{t.replacementStepRevoke.replace('{name}', name)} <a href="#/access">{t.access}</a></li>
+    </ol>
+    {previous.kind === 'write-scoped' && <p className="replacement-cascade">{t.replacementCascade}</p>}
+    {step.status === 'revoked'
+      ? <p role="status">{t.oldTokenRevoked.replace('{name}', name)}</p>
+      : step.status === 'idle'
+        ? <button className="danger-link" type="button" onClick={() => setStep({ status: 'confirming' })}>{t.revokeOldToken.replace('{name}', name)}</button>
+        : <button className="danger-link" type="button" disabled={step.status === 'revoking'} onClick={revoke}>{t.confirmRevokeOld.replace('{name}', name)}</button>}
+    {step.status === 'failed' && <ActionError error={step.error} t={t} />}
+  </section>;
+}
+
+function TokensPanel({ t, principal, filters = new URLSearchParams() }) {
   const [creating, setCreating] = useState(false);
   const [creatingToken, setCreatingToken] = useState(false);
   const [mutate, resetMutation] = useMutation(request);
@@ -2172,12 +2278,47 @@ function TokensPanel({ t, principal }) {
   const inputFeedback = field => ({ 'aria-invalid': error?.field === field || undefined, 'aria-describedby': error?.field === field ? 'token-create-error' : undefined });
   const [refresh, setRefresh] = useState(0);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('active');
+  const [statusFilter, setStatusFilter] = useState(() => filters.get('tokens') === 'expiring' ? 'expiring' : 'active');
+  const [replacing, setReplacing] = useState(null);
+  const [replaceGrants, setReplaceGrants] = useState({ status: 'idle' });
   const [environmentKeys, setEnvironmentKeys] = useState([]);
   const [grants, setGrants] = useState({});
   const [saving, setSaving] = useState(false);
   const confirmDiscard = useUnsavedChanges(Object.keys(grants).length > 0, t.unsavedChanges);
-  const state = useInventory(`/v1/api-tokens?${new URLSearchParams({ status: statusFilter, q: search })}`, refresh);
+  const tokenFilter = statusFilter === 'expiring' ? { status: 'active', expiring_within_days: String(TOKEN_EXPIRY_NOTICE_DAYS) } : { status: statusFilter };
+  const state = useInventory(`/v1/api-tokens?${new URLSearchParams({ ...tokenFilter, q: search })}`, refresh);
+  const startReplace = async token => {
+    if (!confirmDiscard()) return;
+    resetMutation();
+    setEditing('');
+    setGrants({});
+    setCreated(null);
+    setError(null);
+    setReplacing(token);
+    setCreating(true);
+    setWriteScoped(token.kind === 'write-scoped');
+    setNeverExpires(token.kind !== 'write-scoped' && !token.expires_at);
+    setEnvironmentKeys([]);
+    setReplaceGrants({ status: 'loading' });
+    try {
+      const keys = await grantedEnvironments(token.public_id);
+      setEnvironmentKeys(keys);
+      setReplaceGrants({ status: 'ready' });
+    } catch (failure) {
+      setReplaceGrants({ status: 'failed', error: managementError(failure, t, t.loadFailed) });
+    }
+  };
+  // #/administration?replace=<public_id> (from the Overview) opens the replacement form once.
+  const replaceTarget = filters.get('replace') || '';
+  useEffect(() => {
+    if (!replaceTarget) return undefined;
+    let live = true;
+    replaceHashQuery({ replace: '' });
+    request(`/v1/api-tokens?${new URLSearchParams({ key: replaceTarget, status: 'active', limit: '1' })}`)
+      .then(page => { if (live && page.items?.[0]) startReplace(page.items[0]); })
+      .catch(failure => live && setError(managementError(failure, t, t.loadFailed)));
+    return () => { live = false; };
+  }, [replaceTarget]);
   const create = async event => {
     event.preventDefault();
     if (creatingToken) return;
@@ -2196,7 +2337,12 @@ function TokensPanel({ t, principal }) {
       allow_without_mtls: !writeScoped && data.has('allow_without_mtls'),
       never_expires: !writeScoped && neverExpires,
     };
-    if (writeScoped) {
+    if (replacing?.kind === 'write-scoped') {
+      // Copy scopes exactly: an empty list denies everything, while an omitted scope allows everything.
+      body.kind = 'write-scoped';
+      if (replacing.config_keys != null) body.config_keys = replacing.config_keys;
+      if (replacing.namespace_keys != null) body.namespace_keys = replacing.namespace_keys;
+    } else if (writeScoped) {
       body.kind = 'write-scoped';
       for (const key of ['config_keys', 'namespace_keys']) {
         if (data.get(key)?.trim()) body[key] = data.get(key).split(',').map(value => value.trim());
@@ -2213,7 +2359,8 @@ function TokensPanel({ t, principal }) {
     setCreatingToken(true);
     try {
       const result = await mutate('/v1/api-tokens', body);
-      setCreated(result);
+      setCreated(replacing ? { ...result, replaces: replacing } : result);
+      setReplacing(null);
       setCreating(false);
       setRefresh(value => value + 1);
     } catch (error) {
@@ -2251,24 +2398,30 @@ function TokensPanel({ t, principal }) {
   };
   return (
     <section className="admin-panel tokens-panel">
-      <div className="panel-actions"><span>{t.tokenEnvironmentGrant}</span><button className="primary-action compact-action" type="button" disabled={creatingToken} onClick={() => { resetMutation(); setCreating(value => !value); setEnvironmentKeys([]); setError(null); setCreated(null); }}>{t.newAPIToken}</button></div>
+      <div className="panel-actions"><span>{t.tokenEnvironmentGrant}</span><button className="primary-action compact-action" type="button" disabled={creatingToken} onClick={() => { resetMutation(); setCreating(value => !value || Boolean(replacing)); setReplacing(null); setWriteScoped(false); setNeverExpires(false); setEnvironmentKeys([]); setError(null); setCreated(null); }}>{t.newAPIToken}</button></div>
       <div className="index-toolbar">
         <label><span>{t.search}</span><input type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
-        <StatusFilter value={statusFilter} onChange={setStatusFilter} inactive="revoked" t={t} />
+        <StatusFilter value={statusFilter} onChange={setStatusFilter} inactive="revoked" extra={[{ value: 'expiring', label: t.statusExpiring.replace('{days}', TOKEN_EXPIRY_NOTICE_DAYS) }]} t={t} />
       </div>
       {created && <div className="one-time-secret" role="alert"><strong>{created.token ? t.tokenOnce : (t.locale.startsWith('zh') ? '该操作已完成，令牌不会再次返回。如未保存，请按下方 Token ID 找到并吊销该令牌后重新签发。' : 'This operation already completed. The Token cannot be returned again. If it was not saved, find and revoke the Token ID below, then issue a replacement.')}</strong><CopyValue value={created.token || created.public_id} label={created.token ? 'API Token' : 'Token ID'} t={t} /></div>}
+      {created?.replaces && <ReplacementSteps key={created.public_id} previous={created.replaces} onRevoked={() => setRefresh(value => value + 1)} t={t} />}
       {creating && (
-        <form className="token-form" noValidate onSubmit={create} onInput={() => setError(null)}>
+        <form key={replacing?.public_id || 'new'} className="token-form" noValidate onSubmit={create} onInput={() => setError(null)}>
+          {replacing && <div className="replace-intro"><h3>{t.replaceTitle.replace('{name}', `${replacing.display_name} · ${replacing.display_prefix}`)}</h3><p>{t.replaceExplanation.replace('{name}', replacing.display_name)}</p></div>}
           <fieldset className="token-create-fields" disabled={creatingToken}>
-          <label>{t.tokenName}<input {...inputFeedback('display_name')} name="display_name" required maxLength="255" autoComplete="off" /></label>
-          <EnvironmentChoices invalid={error?.field === 'environment_keys'} describedBy={error?.field === 'environment_keys' ? 'token-create-error' : undefined} label={t.allowedEnvironments} checked={environment => environmentKeys.includes(environment.key)} onChange={(key, checked) => setEnvironmentKeys(current => checked ? [...current, key] : current.filter(value => value !== key))} t={t} />
-          <label className="check-line"><input type="checkbox" checked={writeScoped} onChange={event => { setWriteScoped(event.target.checked); setNeverExpires(false); setError(null); }} />{t.writeScoped}</label>
-          {writeScoped && <><p className="scope-note">{t.writeTokenHint}</p><label>{t.configAllowlist}<input {...inputFeedback('config_keys')} name="config_keys" maxLength="16384" autoComplete="off" /><small>{t.scopeHint}</small></label><label>{t.namespaceAllowlist}<input {...inputFeedback('namespace_keys')} name="namespace_keys" maxLength="16384" autoComplete="off" /><small>{t.scopeHint}</small></label></>}
-          {!writeScoped && <label className="check-line"><input type="checkbox" name="allow_without_mtls" />{t.allowWithoutMTLS}</label>}
+          <label>{t.tokenName}<input {...inputFeedback('display_name')} name="display_name" required maxLength="255" autoComplete="off" defaultValue={replacing?.display_name} /></label>
+          {replacing && replaceGrants.status === 'loading' && <p role="status">{t.replaceLoadingGrants}</p>}
+          {replacing && replaceGrants.status === 'failed' && <ActionError error={replaceGrants.error} t={t} />}
+          {replacing?.kind === 'write-scoped' ? <div className="replace-fixed"><strong>{t.allowedEnvironments}</strong><div className="environment-links">{environmentKeys.map(key => <code key={key}>{key}</code>)}</div><p>{t.configAllowlist}: {replacing.config_keys == null ? '*' : replacing.config_keys.join(', ') || '∅'}</p><p>{t.namespaceAllowlist}: {replacing.namespace_keys == null ? '*' : replacing.namespace_keys.join(', ') || '∅'}</p><p className="muted-note">{t.replaceScopesFixed}</p></div>
+            : <EnvironmentChoices invalid={error?.field === 'environment_keys'} describedBy={error?.field === 'environment_keys' ? 'token-create-error' : undefined} label={t.allowedEnvironments} checked={environment => environmentKeys.includes(environment.key)} onChange={(key, checked) => setEnvironmentKeys(current => checked ? [...current, key] : current.filter(value => value !== key))} t={t} />}
+          {!replacing && <label className="check-line"><input type="checkbox" checked={writeScoped} onChange={event => { setWriteScoped(event.target.checked); setNeverExpires(false); setError(null); }} />{t.writeScoped}</label>}
+          {writeScoped && replacing && <p className="scope-note">{t.writeTokenHint}</p>}
+          {writeScoped && !replacing && <><p className="scope-note">{t.writeTokenHint}</p><label>{t.configAllowlist}<input {...inputFeedback('config_keys')} name="config_keys" maxLength="16384" autoComplete="off" /><small>{t.scopeHint}</small></label><label>{t.namespaceAllowlist}<input {...inputFeedback('namespace_keys')} name="namespace_keys" maxLength="16384" autoComplete="off" /><small>{t.scopeHint}</small></label></>}
+          {!writeScoped && <label className="check-line"><input type="checkbox" name="allow_without_mtls" defaultChecked={replacing?.allow_without_mtls} />{t.allowWithoutMTLS}</label>}
           {!writeScoped && <label className="check-line"><input type="checkbox" checked={neverExpires} onChange={event => setNeverExpires(event.target.checked)} />{t.neverExpires}</label>}
           {!neverExpires && <ExpiryInput t={t} maxDays={writeScoped ? maxDays : undefined} feedback={inputFeedback('expires_at')} onEdit={() => setError(null)} />}
           </fieldset>
-          <div className="form-actions"><div id="token-create-error"><ActionError error={error} t={t} /></div><button className="primary-action compact-action" type="submit" disabled={creatingToken}>{creatingToken ? (t.locale.startsWith('zh') ? '正在创建…' : 'Creating…') : t.createAPIToken}</button></div>
+          <div className="form-actions"><div id="token-create-error"><ActionError error={error} t={t} /></div>{replacing && <button type="button" disabled={creatingToken} onClick={() => { setCreating(false); setReplacing(null); setError(null); }}>{t.cancel}</button>}<button className="primary-action compact-action" type="submit" disabled={creatingToken || Boolean(replacing && replaceGrants.status !== 'ready')}>{creatingToken ? (t.locale.startsWith('zh') ? '正在创建…' : 'Creating…') : t.createAPIToken}</button></div>
         </form>
       )}
       {editing && <form className="grant-form" onSubmit={saveGrants}><strong>{editing.display_name}</strong>
@@ -2279,7 +2432,7 @@ function TokensPanel({ t, principal }) {
       {!creating && error && <ActionError error={error} t={t} />}
       <CollectionState state={state} t={t} empty={search || statusFilter !== 'active' ? t.noMatchingResults : undefined}>
         <div className="table-frame"><table><thead><tr><th>{t.tokenName}</th><th>{t.prefix}</th><th>{t.environments}</th><th>mTLS</th><th>{t.expiresAt}</th><th>{t.status}</th><th /></tr></thead>
-          <tbody>{state.items.map(token => <tr key={token.public_id}><td><strong title={token.display_name}>{token.display_name}</strong><CopyValue value={token.public_id} label="Token ID" t={t} /><small>{token.kind || 'read-only'}</small>{(token.kind === 'write-scoped' || token.parent_public_id) && <details><summary>{t.allowedEnvironments}</summary><p>{t.configAllowlist}: {token.config_keys == null ? '*' : token.config_keys.join(', ') || '∅'}</p><p>{t.namespaceAllowlist}: {token.namespace_keys == null ? '*' : token.namespace_keys.join(', ') || '∅'}</p></details>}</td><td><code title={token.display_prefix}>{token.display_prefix}</code></td><td><div className="environment-links">{token.environment_keys.map(environment => <code key={environment}>{environment}</code>)}{token.environment_count > token.environment_keys.length && <span>+{token.environment_count - token.environment_keys.length}</span>}</div></td><td>{token.allow_without_mtls ? t.tokenOnlyAllowed : t.mtlsRequired}</td><td><Expiration value={token.expires_at} now={now} revoked={token.revoked} t={t} /></td><td><span className={token.revoked || Date.parse(token.expires_at) <= now ? 'status archived' : 'status active'}>{token.revoked ? t.revoked : Date.parse(token.expires_at) <= now ? (t.locale.startsWith('zh') ? '已过期' : 'Expired') : t.statusActive}</span></td><td>{!token.revoked && <div className="row-actions">{token.kind !== 'write-scoped' && !token.parent_public_id && <button type="button" disabled={saving} aria-label={`${t.editEnvironments} ${token.display_name}`} onClick={() => { if (confirmDiscard()) { setEditing(token); setGrants({}); } }}>{t.editEnvironments}</button>}{confirming === token.public_id ? <button className="danger-link" type="button" aria-label={`${t.confirmRevoke} ${token.display_name}`} onClick={() => revoke(token.public_id)}>{t.confirmRevoke}</button> : <button className="danger-link" type="button" aria-label={`${t.revoke} ${token.display_name}`} onClick={() => setConfirming(token.public_id)}>{t.revoke}</button>}</div>}</td></tr>)}</tbody>
+          <tbody>{state.items.map(token => <tr key={token.public_id}><td><strong title={token.display_name}>{token.display_name}</strong><CopyValue value={token.public_id} label="Token ID" t={t} /><small>{token.kind || 'read-only'}</small>{(token.kind === 'write-scoped' || token.parent_public_id) && <details><summary>{t.allowedEnvironments}</summary><p>{t.configAllowlist}: {token.config_keys == null ? '*' : token.config_keys.join(', ') || '∅'}</p><p>{t.namespaceAllowlist}: {token.namespace_keys == null ? '*' : token.namespace_keys.join(', ') || '∅'}</p></details>}</td><td><code title={token.display_prefix}>{token.display_prefix}</code></td><td><div className="environment-links">{token.environment_keys.map(environment => <code key={environment}>{environment}</code>)}{token.environment_count > token.environment_keys.length && <span>+{token.environment_count - token.environment_keys.length}</span>}</div></td><td>{token.allow_without_mtls ? t.tokenOnlyAllowed : t.mtlsRequired}</td><td><Expiration value={token.expires_at} now={now} revoked={token.revoked} t={t} /></td><td><span className={tokenStatus(token, now, t).className}>{tokenStatus(token, now, t).label}</span></td><td>{!token.revoked && <div className="row-actions">{!token.parent_public_id && <button type="button" disabled={saving || creatingToken} aria-label={`${t.replaceToken} ${token.display_name}`} onClick={() => startReplace(token)}>{t.replaceToken}</button>}{token.kind !== 'write-scoped' && !token.parent_public_id && <button type="button" disabled={saving} aria-label={`${t.editEnvironments} ${token.display_name}`} onClick={() => { if (confirmDiscard()) { setEditing(token); setGrants({}); } }}>{t.editEnvironments}</button>}{confirming === token.public_id ? <button className="danger-link" type="button" aria-label={`${t.confirmRevoke} ${token.display_name}`} onClick={() => revoke(token.public_id)}>{t.confirmRevoke}</button> : <button className="danger-link" type="button" aria-label={`${t.revoke} ${token.display_name}`} onClick={() => setConfirming(token.public_id)}>{t.revoke}</button>}</div>}</td></tr>)}</tbody>
         </table></div>
       </CollectionState>
       <InventoryPagination collection={state} t={t} />
@@ -2968,9 +3121,10 @@ function CollectionState({ state, t, empty, children }) {
   return children;
 }
 
-function StatusFilter({ value, onChange, inactive = 'archived', t }) {
+function StatusFilter({ value, onChange, inactive = 'archived', extra = [], t }) {
   return <label><span>{t.status}</span><select value={value} onChange={event => onChange(event.target.value)}>
     <option value="active">{t.statusActive}</option>
+    {extra.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
     <option value={inactive}>{inactive === 'revoked' ? t.revoked : t.statusArchived}</option>
     <option value="all">{t.allStatuses}</option>
   </select></label>;
