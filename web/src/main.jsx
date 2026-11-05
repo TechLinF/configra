@@ -2577,7 +2577,7 @@ function ConfigDetail({ principal, configKey, environmentKey, t }) {
             inspection.status === 'loading' ? <div className="collection-state"><span className="loading-line" /></div>
               : inspection.status === 'failed' ? <p className="inline-error" role="alert">{t.operationFailed}</p>
                 : <section className="editor-panel">
-                  <div className="editor-toolbar"><span>{viewedFormat.toUpperCase()}</span><code>{t.revision} {viewedRevision}</code><CopyValue value={viewedContent} label={t.copyConfiguration} t={t} /></div>
+                  <div className="editor-toolbar"><span>{viewedFormat.toUpperCase()}</span><code>{t.revision} {viewedRevision}</code><CopyValue value={viewedContent} label={t.copyConfiguration} hideValue t={t} /></div>
                   <ConfigCodeEditor label={viewingCurrent ? t.configurationSource : t.revisionLabel.replace('{revision}', viewedRevision)} value={viewedContent} format={viewedFormat} readOnly={!viewingCurrent || principal.role !== 'admin'} onChange={value => { setSource(value); setSaveError(null); setValidation({ status: 'idle', warnings: [] }); }} />
                   {principal.role === 'admin' && viewingCurrent && <div className="editor-actions">
                     <div className="editor-feedback" role="status">
@@ -2857,7 +2857,7 @@ function ConfigCopy({ path, config, newConfig, t }) {
     {state.status === 'ready' && <p className="success-note" role="status">{t.copyComplete.replace('{target}', `${state.environment}/${state.targetConfig}`).replace('{revision}', state.result.revision)}</p>}
     {(state.status === 'ready' || state.reason === 'target_config_exists') && <p><a href={`#/configs/${encodeURIComponent(state.targetConfig)}/${encodeURIComponent(state.environment)}`}>{t.openTargetConfig}</a></p>}
     {state.result?.warnings?.length > 0 && <div className="config-warning-list" role="status"><ConfigWarningLines warnings={state.result.warnings} t={t} /></div>}
-    <div className="editor-toolbar"><span>{config.format.toUpperCase()}</span><CopyValue value={content} label={t.copyConfiguration} t={t} />{edited && <button type="button" onClick={() => { setContent(config.content); change(); }}>{t.resetToSource}</button>}</div>
+    <div className="editor-toolbar"><span>{config.format.toUpperCase()}</span><CopyValue value={content} label={t.copyConfiguration} hideValue t={t} />{edited && <button type="button" onClick={() => { setContent(config.content); change(); }}>{t.resetToSource}</button>}</div>
     {edited && <p className="muted-note" role="status">{t.editedCopyNote}</p>}
     <ConfigCodeEditor label={t.source} readOnly={newConfig} value={content} format={config.format} onChange={value => { setContent(value); change(); }} />
   </section>;
