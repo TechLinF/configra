@@ -288,6 +288,9 @@ func (authentication *OIDC) attachPrincipal(next http.Handler) http.Handler {
 					return
 				}
 			}
+			principal.SessionExpiresAt = authentication.sessions.Deadline(request.Context()).UTC()
+			principal.SessionIdleTimeout = authentication.sessions.IdleTimeout
+			principal.SessionLifetime = authentication.sessions.Lifetime
 			request = request.WithContext(WithPrincipal(request.Context(), principal))
 		}
 		next.ServeHTTP(response, request)

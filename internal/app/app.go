@@ -110,7 +110,8 @@ func run(ctx context.Context, mode bootstrap.Mode, configPath string) error {
 		store.WriteTokenMaxTTL = time.Duration(config.WriteTokens.MaxTTLDays) * 24 * time.Hour
 		sessionStore := store.NewManagementSessionStore(5 * time.Minute)
 		defer sessionStore.StopCleanup()
-		sessions := humanauth.NewSessionManager(sessionStore)
+		idleTimeout, sessionLifetime := config.SessionLimits()
+		sessions := humanauth.NewSessionManagerWithLimits(sessionStore, humanauth.SessionLimits{IdleTimeout: idleTimeout, Lifetime: sessionLifetime})
 		sessions.ErrorFunc = func(response http.ResponseWriter, request *http.Request, _ error) {
 			// Session loading precedes routing: raw URLs can contain credentials.
 			logger.Error("Session operation failed",

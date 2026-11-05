@@ -1456,3 +1456,30 @@ func TestTokenListAcceptsAnExpiryWindow(t *testing.T) {
 		t.Fatalf("rejected windows reached the store: %#v", repository.tokenQueries)
 	}
 }
+
+func TestMeReportsTheSessionLimitsForTheBrowser(t *testing.T) {
+	handler := management.NewHandler(&recordingConfigWriter{}, nil, nil)
+	expiresAt := time.Date(2026, 11, 5, 18, 30, 0, 0, time.UTC)
+	me := func(principal humanauth.Principal) map[string]any {
+		request := httptest.NewRequest(http.MethodGet, "https://configra.test/v1/me", nil)
+		request = request.WithContext(humanauth.WithPrincipal(request.Context(), principal))
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		var body map[string]any
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &body) != nil {
+			t.Fatalf("/v1/me = %d %q", response.Code, response.Body.String())
+		}
+		return body
+	}
+	body := me(humanauth.Principal{Subject: "admin-1", Role: humanauth.RoleAdmin,
+		SessionExpiresAt: expiresAt, SessionIdleTimeout: 30 * time.Minute, SessionLifetime: 8 * time.Hour})
+	if body["session_expires_at"] != "2026-11-05T18:30:00Z" || body["session_idle_timeout_seconds"] != float64(1800) || body["session_lifetime_seconds"] != float64(28800) {
+		t.Fatalf("session fields = %#v", body)
+	}
+	body = me(humanauth.Principal{Subject: "admin-1", Role: humanauth.RoleAdmin})
+	for _, field := range []string{"session_expires_at", "session_idle_timeout_seconds", "session_lifetime_seconds"} {
+		if _, present := body[field]; present {
+			t.Fatalf("%s present without a session: %#v", field, body)
+		}
+	}
+}

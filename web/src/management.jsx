@@ -2,10 +2,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import { CopyValue } from './CopyValue.jsx';
 
 export async function request(path, options = {}) {
+  const sent = Date.now();
   const response = await fetch(path, {
     ...options,
     headers: { Accept: 'application/json', ...options.headers },
   });
+  // The shell listens for these to recover an ended Session without losing the page (ADR-0035).
+  if (response.status === 401) window.dispatchEvent(new Event('configra:session-ended'));
+  // The server's idle timer restarts when it handles the request, so the send time is the conservative activity time.
+  else if (response.ok) window.dispatchEvent(new CustomEvent('configra:session-activity', { detail: sent }));
   if (!response.ok) {
     const error = new Error(`request failed: ${response.status}`);
     error.status = response.status;

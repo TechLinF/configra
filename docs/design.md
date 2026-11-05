@@ -306,7 +306,10 @@ Management 使用标准 OIDC Authorization Code + PKCE，不绑定 Casdoor SDK�
 ID Token 一致。固定 Redirect URI 同时定义唯一允许的 Public Host。
 
 Session Cookie 使用 `Secure`、`HttpOnly`、`SameSite=Lax` 与 `__Host-` 前缀，
-绝对有效期 8 小时、空闲超时 30 分钟。状态变更接口由 Go 标准库
+默认绝对有效期 8 小时、空闲超时 30 分钟；运维可在冷启动配置 `sessions` 中设置
+（空闲 5–1440 分钟、有效期 1–168 小时，启动时读取，管理端只读展示，见 ADR-0035）。
+有效期超过 8 小时时 Cookie 在浏览器重启后保留。会话结束时管理端保留当前页面，提示在
+新标签页重新登录，身份或角色变化时重新加载。状态变更接口由 Go 标准库
 `http.CrossOriginProtection` 保护；本地退出仅支持同源 `POST /auth/logout` 并销毁
 服务端 Session。详细决策见
 [ADR-0026](adr/0026-use-standard-oidc-server-sessions-and-stdlib-csrf.md)。

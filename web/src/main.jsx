@@ -271,6 +271,18 @@ const messages = {
     expiringTokens: 'API Tokens expiring soon',
     expiringTokensEmpty: 'No API Token expires within {days} days.',
     viewAllExpiring: 'View all {count}',
+    sessionEnded: 'Your session has ended. Sign in again to continue; anything you have not saved stays on this page.',
+    unauthenticated: 'Your session has ended. Sign in again, then retry; nothing was saved.',
+    unauthorized: 'Your session has ended. Sign in again, then retry; nothing was saved.',
+    session_revoked: 'Your session was ended by an administrator. Sign in again, then retry; nothing was saved.',
+    signInNewTab: 'Sign in in a new tab',
+    sessionCheckAgain: 'I have signed in',
+    sessionIdleWarning: 'You will be signed out in about two minutes because of inactivity.',
+    staySignedIn: 'Stay signed in',
+    sessionLifetimeWarning: 'Your session ends at {time}. Sign in again to keep working without interruption.',
+    signedInElsewhere: 'You are signed in. Return to your Configra tab to continue, or close this one.',
+    openConfigra: 'Open Configra',
+    adminSessionLimits: '{idle} idle · {lifetime} maximum',
     tokenOnlyAllowed: 'Token-only allowed',
     tokenName: 'Token name',
     targetConfig: 'Target config',
@@ -683,6 +695,18 @@ const messages = {
     expiringTokens: '即将过期的 API Token',
     expiringTokensEmpty: '{days} 天内没有将过期的 API Token。',
     viewAllExpiring: '查看全部 {count} 个',
+    sessionEnded: '会话已结束。请重新登录后继续；本页尚未保存的内容会保留。',
+    unauthenticated: '会话已结束。请重新登录后重试；本次未保存任何内容。',
+    unauthorized: '会话已结束。请重新登录后重试；本次未保存任何内容。',
+    session_revoked: '管理员已结束您的会话。请重新登录后重试；本次未保存任何内容。',
+    signInNewTab: '在新标签页登录',
+    sessionCheckAgain: '我已重新登录',
+    sessionIdleWarning: '由于长时间未操作，约两分钟后将退出登录。',
+    staySignedIn: '保持登录',
+    sessionLifetimeWarning: '会话将于 {time} 结束。重新登录可避免工作中断。',
+    signedInElsewhere: '已登录。请回到原来的 Configra 标签页继续，或关闭此页。',
+    openConfigra: '打开 Configra',
+    adminSessionLimits: '空闲 {idle} · 最长 {lifetime}',
     tokenOnlyAllowed: '允许仅 Token',
     tokenName: 'Token 名称',
     targetConfig: '目标 Config',
@@ -1063,6 +1087,89 @@ function ThemeButton({ theme, setTheme, t }) {
   );
 }
 
+const SESSION_IDLE_WARNING_MS = 2 * 60000;
+const SESSION_LIFETIME_WARNING_MS = 10 * 60000;
+
+function signInInNewTab() {
+  window.open(`/auth/login?${new URLSearchParams({ return_to: '/ui/?signed-in=1' })}`, 'configra-sign-in');
+}
+
+function sessionDuration(seconds, zh) {
+  if (seconds % 3600 === 0) return zh ? `${seconds / 3600} 小时` : `${seconds / 3600} h`;
+  return zh ? `${Math.round(seconds / 60)} 分钟` : `${Math.round(seconds / 60)} min`;
+}
+
+// Keeps the page when the Session ends: a 401 shows a banner instead of the sign-in page, sign-in
+// happens in another tab, and the identity is re-checked before the banner clears (ADR-0035).
+function SessionMonitor({ principal, t }) {
+  const [ended, setEnded] = useState(false);
+  const [lastActivity, setLastActivity] = useState(Date.now);
+  const [expiresAt, setExpiresAt] = useState(() => Date.parse(principal.session_expires_at) || 0);
+  const [now, setNow] = useState(Date.now);
+  const idleMs = (principal.session_idle_timeout_seconds || 0) * 1000;
+  const recheck = async () => {
+    try {
+      const me = await request('/v1/me');
+      if (me.issuer !== principal.issuer || me.subject !== principal.subject || me.role !== principal.role) {
+        window.location.reload();
+        return;
+      }
+      setExpiresAt(Date.parse(me.session_expires_at) || 0);
+      setLastActivity(Date.now());
+      setEnded(false);
+    } catch {
+      setEnded(true);
+    }
+  };
+  const recheckRef = useRef(recheck);
+  recheckRef.current = recheck;
+  useEffect(() => {
+    const end = () => setEnded(true);
+    const active = event => setLastActivity(current => Math.max(current, event.detail || Date.now()));
+    window.addEventListener('configra:session-ended', end);
+    window.addEventListener('configra:session-activity', active);
+    let channel = null;
+    try {
+      channel = new BroadcastChannel('configra-session');
+      channel.onmessage = event => { if (event.data === 'signed-in') recheckRef.current(); };
+    } catch { channel = null; }
+    const timer = window.setInterval(() => setNow(Date.now()), 15000);
+    return () => {
+      window.removeEventListener('configra:session-ended', end);
+      window.removeEventListener('configra:session-activity', active);
+      channel?.close();
+      window.clearInterval(timer);
+    };
+  }, []);
+  const idleDeadline = idleMs ? lastActivity + idleMs : 0;
+  const expired = (idleDeadline && now >= idleDeadline) || (expiresAt && now >= expiresAt);
+  if (ended || expired) {
+    return <div className="session-banner" role="alert"><p>{t.sessionEnded}</p><div className="row-actions">
+      <button className="primary-action compact-action" type="button" onClick={signInInNewTab}>{t.signInNewTab}</button>
+      <button type="button" onClick={recheck}>{t.sessionCheckAgain}</button>
+    </div></div>;
+  }
+  if (idleDeadline && now >= idleDeadline - SESSION_IDLE_WARNING_MS) {
+    return <div className="session-banner session-banner-notice" role="status"><p>{t.sessionIdleWarning}</p>
+      <button type="button" onClick={recheck}>{t.staySignedIn}</button></div>;
+  }
+  if (expiresAt && now >= expiresAt - SESSION_LIFETIME_WARNING_MS) {
+    const time = new Intl.DateTimeFormat(t.locale, { timeStyle: 'short' }).format(new Date(expiresAt));
+    return <div className="session-banner session-banner-notice" role="status"><p>{t.sessionLifetimeWarning.replace('{time}', time)}</p>
+      <button type="button" onClick={signInInNewTab}>{t.signInNewTab}</button></div>;
+  }
+  return null;
+}
+
+// The tab opened by "Sign in in a new tab" lands here: it tells the original tab and closes itself.
+function SignedInElsewhere({ t }) {
+  useEffect(() => {
+    try { const channel = new BroadcastChannel('configra-session'); channel.postMessage('signed-in'); channel.close(); } catch { /* the original tab can still re-check */ }
+    window.setTimeout(() => window.close(), 300);
+  }, []);
+  return <main className="signed-in-elsewhere"><Mark /><p>{t.signedInElsewhere}</p><a href="/ui/">{t.openConfigra}</a></main>;
+}
+
 function Login({ language, setLanguage, theme, setTheme, t }) {
   return (
     <main className="login-layout">
@@ -1079,7 +1186,7 @@ function Login({ language, setLanguage, theme, setTheme, t }) {
           <h1>{t.loginTitle}</h1>
           <p>{t.loginBody}</p>
           <div className="login-action">
-            <a className="primary-action" href="/auth/login?return_to=/">{t.loginButton}<span aria-hidden="true">→</span></a>
+            <a className="primary-action" href="/auth/login?return_to=/" onClick={() => { try { if (window.location.hash.length > 2) sessionStorage.setItem('configra-return-hash', window.location.hash); } catch { /* optional */ } }}>{t.loginButton}<span aria-hidden="true">→</span></a>
             <small>{t.loginAuthHint}</small>
             <small><LicenseLink t={t} /></small>
           </div>
@@ -1215,6 +1322,7 @@ function Shell({ principal, language, setLanguage, theme, setTheme, t }) {
             <form action="/auth/logout" method="post"><button className="logout-button" type="submit">{t.signOut}</button></form>
           </div>
         </header>
+        <SessionMonitor principal={principal} t={t} />
         {route === 'overview' && <Overview inventory={inventory} principal={principal} t={t} />}
         {route === 'environments' && currentRoute.segments.length >= 2
           ? <EnvironmentDetail environmentKey={currentRoute.segments[1]} t={t} />
@@ -2205,7 +2313,7 @@ function Administration({ t, principal, filters = new URLSearchParams() }) {
         <button type="button" role="tab" aria-selected={tab === 'notifications'} onClick={() => setTab('notifications')}>{t.notifications}</button>
         <button type="button" role="tab" aria-selected={tab === 'deployment'} onClick={() => setTab('deployment')}>{t.deploymentStatus}</button>
       </div>
-      {tab === 'tokens' ? <TokensPanel t={t} principal={principal} filters={filters} /> : tab === 'certificates' ? <CertificateManagement t={t} onAuthorities={() => setTab('authorities')} /> : tab === 'authorities' ? <AuthorityManagement t={t} onCertificates={() => setTab('certificates')} /> : tab === 'sessions' ? <Sessions t={t} principal={principal} /> : tab === 'notifications' ? <Notifications t={t} embedded /> : <DeploymentPanel t={t} />}
+      {tab === 'tokens' ? <TokensPanel t={t} principal={principal} filters={filters} /> : tab === 'certificates' ? <CertificateManagement t={t} onAuthorities={() => setTab('authorities')} /> : tab === 'authorities' ? <AuthorityManagement t={t} onCertificates={() => setTab('certificates')} /> : tab === 'sessions' ? <Sessions t={t} principal={principal} /> : tab === 'notifications' ? <Notifications t={t} embedded /> : <DeploymentPanel t={t} principal={principal} />}
     </div>
   );
 }
@@ -2441,7 +2549,7 @@ function TokensPanel({ t, principal, filters = new URLSearchParams() }) {
 }
 
 
-function DeploymentPanel({ t }) {
+function DeploymentPanel({ t, principal }) {
   const [ready, setReady] = useState(null);
   useEffect(() => {
     let live = true;
@@ -2458,6 +2566,7 @@ function DeploymentPanel({ t }) {
         <article><span>EVT</span><strong>NATS</strong><small>{t.nonBlockingAccessEvents}</small></article>
         <article><span>CFG</span><strong>{t.coldStartYAML}</strong><small>{t.restartToApply}</small></article>
         <article><span>API</span><strong>{t.apiScalesIndependently}</strong><small>{t.managementSingleReplica}</small></article>
+        {principal?.session_idle_timeout_seconds > 0 && <article><span>SSN</span><strong>{t.adminSessionLimits.replace('{idle}', sessionDuration(principal.session_idle_timeout_seconds, t.locale.startsWith('zh'))).replace('{lifetime}', sessionDuration(principal.session_lifetime_seconds, t.locale.startsWith('zh')))}</strong><small>{sessionLabel(t)} · {t.restartToApply}</small></article>}
       </div>
     </section>
   );
@@ -3189,15 +3298,24 @@ function App() {
     document.documentElement.dataset.theme = value;
     setThemeState(value);
   };
+  const signedInElsewhere = new URLSearchParams(window.location.search).get('signed-in') === '1';
   const load = () => {
     setSession({ status: 'loading' });
     request('/v1/me')
-      .then(principal => setSession({ status: 'ready', principal }))
+      .then(principal => {
+        try {
+          const returnHash = sessionStorage.getItem('configra-return-hash');
+          sessionStorage.removeItem('configra-return-hash');
+          if (returnHash && window.location.hash.length <= 2) window.location.hash = returnHash;
+        } catch { /* optional convenience */ }
+        setSession({ status: 'ready', principal });
+      })
       .catch(error => setSession({ status: error.status === 401 ? 'anonymous' : 'failed' }));
   };
-  useEffect(load, []);
+  useEffect(() => { if (!signedInElsewhere) load(); }, []);
   useEffect(() => { document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en'; }, [language]);
 
+  if (signedInElsewhere) return <SignedInElsewhere t={t} />;
   if (session.status === 'loading') return <Loading />;
   if (session.status === 'anonymous') return <Login language={language} setLanguage={setLanguage} theme={theme} setTheme={setTheme} t={t} />;
   if (session.status === 'failed') return <Failure retry={load} t={t} />;

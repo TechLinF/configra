@@ -28,6 +28,14 @@ notifications:
 # Optional shorter issuance policy (1..90 days); scoped writers must set an expiry.
 write_tokens:
   max_ttl_days: 90
+# Optional administrator session limits, read at startup; set the same values on
+# every Management replica. Idle 5..1440 minutes (default 30), lifetime 1..168 hours
+# (default 8). A lifetime above 8 hours also keeps the session across browser
+# restarts. Roles and MFA are captured at sign-in, so the lifetime also bounds how
+# long a removed administrator keeps access unless the session is invalidated.
+sessions:
+  idle_timeout_minutes: 30
+  lifetime_hours: 8
 # Write-token issuance requires signed ID Token amr=[mfa] or [pwd, otp].
 oidc:
   issuer: https://identity.example.com

@@ -600,3 +600,56 @@ func TestMFAEvidenceSurvivesVerifiedOIDCSessionAndIgnoresUserInfo(t *testing.T) 
 		})
 	}
 }
+
+func TestAuthenticatedPrincipalCarriesTheSessionLimits(t *testing.T) {
+	provider := newSigningOIDCProvider(t)
+	sessions := humanauth.NewSessionManagerWithLimits(memstore.New(), humanauth.SessionLimits{IdleTimeout: 2 * time.Hour, Lifetime: 72 * time.Hour})
+	authentication, err := humanauth.NewOIDC(context.Background(), humanauth.OIDCConfig{
+		Issuer:                provider.server.URL,
+		ClientID:              "configra-client",
+		ClientSecret:          "oidc-client-secret-sentinel",
+		RedirectURL:           "https://configra.test/auth/callback",
+		AllowInsecureLoopback: true,
+		RoleSource:            humanauth.RoleSourceIDToken,
+		RoleClaim:             "groups",
+		ViewerValues:          []string{"developers"},
+		AdminValues:           []string{"configra-admins"},
+	}, sessions)
+	if err != nil {
+		t.Fatalf("NewOIDC: %v", err)
+	}
+	var seen humanauth.Principal
+	handler := authentication.Handler(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		seen, _ = humanauth.PrincipalFromContext(request.Context())
+	}))
+	loginResponse := httptest.NewRecorder()
+	handler.ServeHTTP(loginResponse, httptest.NewRequest(http.MethodGet, "https://configra.test/auth/login?return_to=/", nil))
+	location, err := url.Parse(loginResponse.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("parse login Location: %v", err)
+	}
+	provider.nonce = location.Query().Get("nonce")
+	provider.challenge = location.Query().Get("code_challenge")
+	callbackRequest := httptest.NewRequest(http.MethodGet, "https://configra.test/auth/callback?code=valid-code&state="+url.QueryEscape(location.Query().Get("state")), nil)
+	callbackRequest.AddCookie(loginResponse.Result().Cookies()[0])
+	callbackResponse := httptest.NewRecorder()
+	signedIn := time.Now()
+	handler.ServeHTTP(callbackResponse, callbackRequest)
+	cookies := callbackResponse.Result().Cookies()
+	if callbackResponse.Code != http.StatusSeeOther || len(cookies) != 1 {
+		t.Fatalf("callback = %d, cookies %#v", callbackResponse.Code, cookies)
+	}
+	// A configured lifetime beyond the default keeps the Cookie across browser restarts.
+	if cookies[0].Expires.IsZero() && cookies[0].MaxAge <= 0 {
+		t.Fatalf("long-lived session Cookie is not persistent: %#v", cookies[0])
+	}
+	request := httptest.NewRequest(http.MethodGet, "https://configra.test/v1/me", nil)
+	request.AddCookie(cookies[0])
+	handler.ServeHTTP(httptest.NewRecorder(), request)
+	if seen.Subject != "user-1" || seen.SessionIdleTimeout != 2*time.Hour || seen.SessionLifetime != 72*time.Hour {
+		t.Fatalf("principal session limits = %#v", seen)
+	}
+	if deadline := seen.SessionExpiresAt.Sub(signedIn); deadline < 72*time.Hour-time.Minute || deadline > 72*time.Hour+time.Minute {
+		t.Fatalf("session deadline %s is not 72 hours after sign-in", seen.SessionExpiresAt)
+	}
+}
